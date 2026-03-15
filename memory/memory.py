@@ -1,7 +1,6 @@
 
 import numpy as np
 import gymnasium as gym 
-from utils.utils import atari_state_preprocess_function
 
 def get_action_dim(action_space: gym.spaces.Space) -> int:
     """
@@ -99,10 +98,18 @@ class ReplayBuffer:
         """
         env_indices = np.random.randint(0, high=self.num_envs, size=(len(batch_indices),))
         
+        states = self.states[batch_indices, env_indices, :]
+        next_states = self.states[(batch_indices + 1) % self.buffer_size, env_indices, :]
+
+        # Normalize uint8 states to float32 [0, 1]
+        if states.dtype == np.uint8:
+            states = states.astype(np.float32) / 255.0
+            next_states = next_states.astype(np.float32) / 255.0
+
         return dict(
-            states=self.states[batch_indices, env_indices, :],
+            states=states,
             actions=self.actions[batch_indices, env_indices, :],
-            next_states=self.states[(batch_indices + 1) % self.buffer_size, env_indices, :], # get the next state by adding 1 to the index, and taking modulo buffer size to handle the circular buffer.
+            next_states=next_states,
             rewards=self.rewards[batch_indices, env_indices],
             dones=self.dones[batch_indices, env_indices],
         )

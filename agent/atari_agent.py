@@ -2,11 +2,10 @@ import torch.nn as nn
 import torch
 import numpy as np
 from abc import ABC, abstractmethod
-from gymnasium.spaces import Space 
+from gymnasium.spaces import Space
 from typing import Union
 
 from utils.networks import AtariDQNNetwork
-from utils.utils import atari_state_preprocess_function
 
 
 def to_correct_device_tensor(input, device)-> torch.Tensor:
@@ -69,10 +68,12 @@ class AtariDQNAgent(AgentBase):
 
     def select_action(self, state:np.ndarray, deterministic=False) -> np.ndarray:
         """
-        params: state: (batch, channel, 84,84)
+        params: state: (batch, channel, 84,84) - can be uint8 or preprocessed float32
         output: action: (batch, 1)
         """
-        state = atari_state_preprocess_function(self.observation_space, state)
+        # Handle uint8 input from environment (convert to float32 and normalize)
+        if state.dtype == np.uint8:
+            state = state.astype(np.float32) / 255.0
         state = to_correct_device_tensor(state, self.device)
 
         all_q_values = self.network(state)
@@ -85,14 +86,12 @@ class AtariDQNAgent(AgentBase):
         return action.cpu().numpy()
 
     def get_q(self, states:np.ndarray, actions:Union[np.ndarray, torch.Tensor]):
-        states = atari_state_preprocess_function(self.observation_space, states)
-        states, actions = to_correct_device_tensor(states, self.device) ,to_correct_device_tensor(actions, self.device)
+        states, actions = to_correct_device_tensor(states, self.device), to_correct_device_tensor(actions, self.device)
         all_q_values = self.network(states)
         q_values = all_q_values.gather(1, actions)
         return q_values 
 
     def get_max_q(self, states:np.ndarray):
-        states = atari_state_preprocess_function(self.observation_space, states)
         states = to_correct_device_tensor(states, self.device)
         all_q_values = self.network(states)
         q_max = torch.max(all_q_values, dim=1, keepdim=True).values
