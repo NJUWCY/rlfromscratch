@@ -3,13 +3,18 @@ import torch
 import numpy as np 
 from omegaconf import DictConfig
 
+
+
 from agent.agent import AgentBase
 from .utils import to_useful_action, get_action_dim
 from env.make_envs import make_vec_envs
 
 
-def evaluate(agent:AgentBase, test_episodes:int, env_args:DictConfig, seed:int):
+def evaluate(agent:AgentBase, test_episodes:int, env_args:DictConfig, seed:int,training_envs):
     envs = make_vec_envs(env_args,False,seed=seed, scale=False)
+    if hasattr(training_envs, "obs_rms"):
+        envs.set_obs_rms(training_envs.get_obs_rms())
+
     agent.eval()
     states = envs.reset()
     episode_rewards = []

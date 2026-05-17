@@ -145,7 +145,7 @@ class BaseAlgorithm(ABC):
         self.initialize() # reset envs
         for epoch in tqdm(range(self.total_epoch), desc="Epoch", unit="epoch"):
             if self.test_condition(epoch):
-                test_result, test_reward = evaluate(self.agent, self.test_episodes,self.args.env, self.seed+self.interaction_step)
+                test_result, test_reward = evaluate(self.agent, self.test_episodes,self.args.env, self.seed+self.interaction_step,self.training_envs)
                 self.logger.log_test(epoch, self.interaction_step, self.gradient_step, test_result)
                 if test_reward > self.best_score:
                     self.best_score = test_reward

@@ -1,9 +1,12 @@
-import gymnasium as gym 
+import gymnasium as gym
 
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnvWrapper\
-
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnvWrapper
+# subprocvecenv收集了reset过程中的infos但是并没有返回
 from stable_baselines3.common.vec_env.vec_normalize import \
     VecNormalize as VecNormalize_ # TODO use this to vector envs like Mujoco and Cartpole
+
+
+from typing import Any
 
 
 import numpy as np
@@ -12,6 +15,50 @@ from .env_types import ENVS_NAME_TYPE
 from .atari_envs import atari_wrap
 from .mujoco_envs import make_mujoco_env
 from .basic_envs import make_basic_env
+from utils.utils import RunningMeanStd
+
+
+class VecObsNorm(VecEnvWrapper):
+    """Normalize observations from a Stable-Baselines3 vectorized environment."""
+
+    def __init__(self, envs, update_obs_rms=True):
+        super().__init__(venv=envs)
+        self.update_obs_rms = update_obs_rms
+        self.obs_rms = RunningMeanStd()
+
+    def reset(self):
+        obs = self.venv.reset()
+        if self.obs_rms and self.update_obs_rms:
+            self.obs_rms.update(obs)
+        return self._norm_obs(obs)
+
+    def step_wait(self):
+        obs, rewards, dones, infos = self.venv.step_wait()
+        if self.obs_rms and self.update_obs_rms:
+            self.obs_rms.update(obs)
+        obs = self._norm_obs(obs).astype(np.float32)
+
+        # process with the infos 
+        for idx, done in enumerate(dones):
+            if done and "terminal_observation" in infos[idx]:
+                infos[idx]["terminal_observation"] = self._norm_obs(
+                    infos[idx]["terminal_observation"]
+                ).astype(np.float32)
+
+        return obs, rewards, dones, infos
+
+    def _norm_obs(self, obs: np.ndarray) -> np.ndarray:
+        if self.obs_rms:
+            return self.obs_rms.norm(obs)
+        return obs
+
+    def set_obs_rms(self, obs_rms: RunningMeanStd) -> None:
+        """Set with given observation running mean/std."""
+        self.obs_rms = obs_rms
+
+    def get_obs_rms(self) -> RunningMeanStd:
+        """Return observation running mean/std."""
+        return self.obs_rms
 
 
 
@@ -63,6 +110,11 @@ def make_vec_envs(args: DictConfig,is_training: bool,seed: int, scale=False):
         envs = SubprocVecEnv(envs_func)
 
     # TODO: Mujoco env can use ObsNomalization
+    # env_name = args.name
+    # if ENVS_NAME_TYPE[env_name]=="mujoco" and args.obs_norm: 
+
+    if getattr(args, "obs_norm", False):
+        envs = VecObsNorm(envs, update_obs_rms=is_training)
     return envs
 
 

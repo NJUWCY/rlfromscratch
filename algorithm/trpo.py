@@ -31,6 +31,7 @@ class TRPO(OnPolicyAlgorithm):
         self.advan_norm = algo_args.advan_norm
         self.critic_update_steps = algo_args.critic_update_steps
         self.critic_batch_size = algo_args.critic_batch_size
+        self.eigenvalue_reg = algo_args.eigenvalue_reg
         
 
     def _update_buffer(self, batch):
@@ -150,10 +151,10 @@ class TRPO(OnPolicyAlgorithm):
 
             kl_grad = get_flat_grad(kl, self.agent.actor, create_graph=True)
 
-            gradient_direction = conjugate_gradients(self.agent.actor,surrogate_gradient, kl_grad, self.cg_steps)
+            gradient_direction = conjugate_gradients(self.agent.actor,surrogate_gradient, kl_grad, self.cg_steps,self.eigenvalue_reg)
             
             stepsize = torch.sqrt(
-                2*self.delta / (   torch.sum(gradient_direction*kl_product(gradient_direction,kl_grad,self.agent.actor))   )
+                2*self.delta / (   torch.sum(gradient_direction*kl_product(gradient_direction,kl_grad,self.agent.actor, self.eigenvalue_reg))   )
                                 )
 
 
@@ -210,7 +211,7 @@ class TRPO(OnPolicyAlgorithm):
         if not self.advan_norm:
             result.add_metric("actor/adv_mean", advantages.mean().item())
             result.add_metric("actor/adv_max", torch.max(advantages).item())
-        result.add_metric("actor/xHx",torch.sum(gradient_direction*kl_product(gradient_direction,kl_grad,self.agent.actor)).item())
+        result.add_metric("actor/xHx",torch.sum(gradient_direction*kl_product(gradient_direction,kl_grad,self.agent.actor,self.eigenvalue_reg)).item())
         result.add_metric("actor/stepsize",stepsize.item())
         result.add_metric("actor/gradient_direction_l2norm",torch.norm(gradient_direction,p=2).item())
         result.add_metric("actor/new_param_l2norm",torch.norm(new_parameter).item())
