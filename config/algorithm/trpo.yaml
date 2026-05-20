@@ -18,3 +18,4 @@ critic_batch_size: 256
 rescale: true
 collect_traj: false
 eigenvalue_reg: 0.1
+gae: true

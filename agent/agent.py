@@ -138,6 +138,9 @@ class GaussianAgent(AgentBase):
             else:
                 raise NotImplementedError 
         return dist
+    
+    def _action_clamp(self,actions:torch.Tensor):
+        return torch.clamp(actions,min=self.low+self.action_eps,max=self.high-self.action_eps)
 
     def select_action(self, states, deterministic=False)->Tuple[np.ndarray, Dict]:
         """
@@ -156,7 +159,7 @@ class GaussianAgent(AgentBase):
             actions = dist.sample()
         
         # clamp the action to avoid the log_prob=nan
-        actions = torch.clamp(actions,min=self.low+self.action_eps,max=self.high-self.action_eps)
+        actions = self._action_clamp(actions)
         log_probs = dist.log_prob(actions)
         return actions.detach().cpu().numpy(), {"log_probs":log_probs.detach().cpu().numpy()}
 

@@ -104,6 +104,7 @@ def make_vec_envs(args: DictConfig,is_training: bool,seed: int, scale=False):
         for i in range(env_num)
     ]
     # create vectorized environments, if env_num == 1, use DummyVecEnv to avoid unnecessary subprocesses
+    # TODO:here the sb3 returns done = done or truncated, we may need to handle the truncated in the envs like absorbing states
     if env_num == 1:
         envs = DummyVecEnv(envs_func)
     else:

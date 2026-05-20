@@ -10,12 +10,12 @@ from utils.utils import OPTIMIZER_DICT
 
 
 
-class DQN(OffPolicyAlgorithm):
+class SAC(OffPolicyAlgorithm):
     
     """DQN algorithm implementation."""
 
-    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: AtariDQNAgent, logger: Logger, device, save_pth: str,best_pth: str, args, target_critic=None):
-        super(DQN, self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth,best_pth, args)
+    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: AtariDQNAgent, logger: Logger, device, save_pth: str,best_pth: str, args, target_agent=None):
+        super(SAC, self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth,best_pth, args)
         
         algo_args = args.algorithm
         assert algo_args.name=="DQN", "The method name in args must be 'dqn' for DQN algorithm."
@@ -30,7 +30,7 @@ class DQN(OffPolicyAlgorithm):
         self.device = device
         
         if self.use_target:
-            self.target_critic = target_critic.to(self.device)
+            self.target_agent = target_agent.to(self.device)
             self._target_hard_update()
 
         self.target_update_method = algo_args.target_update_method
@@ -44,7 +44,7 @@ class DQN(OffPolicyAlgorithm):
         
     
     def _target_hard_update(self):
-        self.target_critic.load_state_dict(self.agent.state_dict())
+        self.target_agent.load_state_dict(self.agent.state_dict())
     
     def _target_soft_update(self):
         for target_param, param in zip(self.target_agent.parameters(), self.agent.parameters()):

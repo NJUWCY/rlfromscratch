@@ -4,6 +4,7 @@ import numpy as np
 from collections import deque
 import gymnasium as gym
 import torch 
+from typing import Tuple
 
 
 from logger.logger import Logger
@@ -27,6 +28,8 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
             self.traj_rollout = buffer
             self.trajnum = buffer.trajnum 
             self.max_episode_length = buffer.max_episode_length
+        self.gae = args.algorithm.gae
+        self.lambda_ = args.algorithm.lambda_
            
             
     
@@ -121,6 +124,69 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
             return self.collect_trajectories()
         else:
             return super().interact_with_envs()
+    
+    def compute_advantages_from_traj(self)->Tuple[np.ndarray,np.ndarray]:
+        states = self.traj_rollout.states
+        rewards = self.traj_rollout.rewards 
+        dones = self.traj_rollout.dones 
+        
+
+        with torch.no_grad():
+            values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((self.trajnum, self.max_episode_length)).cpu().numpy()
+
+        delta = np.zeros((self.trajnum,),dtype=np.float32)
+        last_advan = np.zeros((self.trajnum,),dtype=np.float32)
+        last_value = np.zeros((self.trajnum,),dtype=np.float32)
+        last_returns = np.zeros((self.trajnum,),dtype=np.float32)
+        advantages = np.zeros((self.trajnum,self.max_episode_length),dtype=np.float32)
+        returns = np.zeros((self.trajnum,self.max_episode_length),dtype=np.float32)
+
+        for i in range(self.max_episode_length-1,-1,-1):
+            delta = rewards[:,i] + self.gamma*(1-dones[:,i])*last_value - values[:,i]
+            advantages[:,i] = delta + self.gamma*self.lambda_*(1-dones[:,i])*last_advan
+            returns[:,i] = rewards[:,i] + (1-dones[:,i])*self.gamma*last_returns
+            
+            
+            last_value = values[:,i]
+            last_advan = advantages[:,i]
+            last_returns = returns[:,i]
+        if self.gae:
+            return returns, advantages
+        else:
+            return returns, returns - values
+
+    def compute_advantages_from_rollout(self)->Tuple[np.ndarray,np.ndarray]:
+        states = self.buffer.buffer['states']
+        rewards = self.buffer.buffer['rewards']
+        dones = self.buffer.buffer['dones']
+        
+        num_envs, rollout_length = states.shape[0], states.shape[1]
+
+        with torch.no_grad():
+            values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((num_envs, rollout_length)).cpu().numpy()
+            last_value = self.agent.get_value(self.observations).squeeze(1).cpu().numpy()
+
+        advantages = np.zeros((num_envs,rollout_length),dtype=np.float32)
+        returns = np.zeros((num_envs,rollout_length),dtype=np.float32)
+        if self.gae:
+            delta = np.zeros((num_envs,),dtype=np.float32)
+            last_advan = np.zeros((num_envs,),dtype=np.float32)
+    
+            for i in range(rollout_length-1,-1,-1):
+                delta = rewards[:,i] + self.gamma*(1-dones[:,i])*last_value - values[:,i]
+                advantages[:,i] = delta + self.gamma*self.lambda_*(1-dones[:,i])*last_advan
+                
+                
+                last_value = values[:,i]
+                last_advan = advantages[:,i]
+            returns = advantages + values
+            return returns, advantages
+        else:
+            last_returns = last_value
+            for i in range(rollout_length-1,-1,-1):
+                returns[:,i] = rewards[:,i] + (1-dones[:,i])*self.gamma*last_returns
+                last_returns = returns[:,i]
+            return returns, returns - values
 
 
 

@@ -13,7 +13,7 @@ from .baseonpolicy import OnPolicyAlgorithm
 
 class TRPO(OnPolicyAlgorithm):
 
-    """Base class for off-policy RL algorithms."""
+    """Implementation for TRPO algorithm."""
 
 
     def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: AgentBase, logger: Logger, device, save_pth: str, best_pth:str, args):
@@ -26,69 +26,19 @@ class TRPO(OnPolicyAlgorithm):
         self.linesearch_coeffient = algo_args.linesearch_coeffient
         self.backtracking_steps = algo_args.backtracking_steps
         self.lr = algo_args.learning_rate
-        self.lambda_ = algo_args.lambda_
         self.optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.optimizer](self.agent.critic.parameters(), lr=self.lr)
         self.advan_norm = algo_args.advan_norm
         self.critic_update_steps = algo_args.critic_update_steps
         self.critic_batch_size = algo_args.critic_batch_size
         self.eigenvalue_reg = algo_args.eigenvalue_reg
+        self.advan_eps = 1e-8
+        
         
 
     def _update_buffer(self, batch):
         self.buffer.add(batch)
     
-    def compute_advantages_from_traj(self)->Tuple[np.ndarray,np.ndarray]:
-        states = self.traj_rollout.states
-        rewards = self.traj_rollout.rewards 
-        dones = self.traj_rollout.dones 
-        
 
-        with torch.no_grad():
-            values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((self.trajnum, self.max_episode_length)).cpu().numpy()
-
-        delta = np.zeros((self.trajnum,),dtype=np.float32)
-        last_advan = np.zeros((self.trajnum,),dtype=np.float32)
-        last_value = np.zeros((self.trajnum,),dtype=np.float32)
-        last_returns = np.zeros((self.trajnum,),dtype=np.float32)
-        advantages = np.zeros((self.trajnum,self.max_episode_length),dtype=np.float32)
-        returns = np.zeros((self.trajnum,self.max_episode_length),dtype=np.float32)
-
-        for i in range(self.max_episode_length-1,-1,-1):
-            delta = rewards[:,i] + self.gamma*(1-dones[:,i])*last_value - values[:,i]
-            advantages[:,i] = delta + self.gamma*self.lambda_*(1-dones[:,i])*last_advan
-            returns[:,i] = rewards[:,i] + (1-dones[:,i])*self.gamma*last_returns
-            
-            
-            last_value = values[:,i]
-            last_advan = advantages[:,i]
-            last_returns = returns[:,i]
-        return returns, advantages
-
-    def compute_advantages_from_rollout(self)->Tuple[np.ndarray,np.ndarray]:
-        states = self.buffer.buffer['states']
-        rewards = self.buffer.buffer['rewards']
-        dones = self.buffer.buffer['dones']
-        
-        num_envs, rollout_length = states.shape[0], states.shape[1]
-
-        with torch.no_grad():
-            values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((num_envs, rollout_length)).cpu().numpy()
-
-        delta = np.zeros((num_envs,),dtype=np.float32)
-        last_advan = np.zeros((num_envs,),dtype=np.float32)
-        with torch.no_grad():
-            last_value = self.agent.get_value(self.observations).squeeze(1).cpu().numpy()
-        advantages = np.zeros((num_envs,rollout_length),dtype=np.float32)
-
-        for i in range(rollout_length-1,-1,-1):
-            delta = rewards[:,i] + self.gamma*(1-dones[:,i])*last_value - values[:,i]
-            advantages[:,i] = delta + self.gamma*self.lambda_*(1-dones[:,i])*last_advan
-            
-            
-            last_value = values[:,i]
-            last_advan = advantages[:,i]
-        returns = advantages + values
-        return returns, advantages
 
         
     def _update_policy(self):
@@ -131,7 +81,7 @@ class TRPO(OnPolicyAlgorithm):
             returns = torch.from_numpy(returns).float().to(self.device)
 
             if self.advan_norm:
-                advantages = (advantages-advantages.mean())/advantages.std()
+                advantages = (advantages-advantages.mean())/(advantages.std()+self.advan_eps)
 
 
 

@@ -55,12 +55,15 @@ class MLPNetwork(nn.Module):
     
 
 class Actor(nn.Module): # This is designed in TRPO, in other algorithm there are more to implement
-    def __init__(self, state_dim, action_dim, hidden_sizes=[30,], activation=nn.ReLU):
+    def __init__(self, state_dim, action_dim, hidden_sizes=[30,], activation=nn.ReLU,clip_sigma=True):
         super(Actor, self).__init__()
         self.mu = MLPNetwork(state_dim, action_dim, hidden_sizes, activation)
         self.log_sigma =  nn.Parameter(torch.zeros(size=(1,action_dim))) 
-    
+        self.clip_sigma = clip_sigma
     def forward(self,x):
         mu = self.mu(x)
-        sigma = torch.exp(self.log_sigma).expand_as(mu)
+        log_sigma = self.log_sigma
+        if self.clip_sigma:
+            log_sigma = log_sigma.clamp(min=-10, max=2)
+        sigma = torch.exp(log_sigma).expand_as(mu)
         return mu, sigma

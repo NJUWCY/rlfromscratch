@@ -88,7 +88,30 @@ def get_action_dim(action_space: gym.spaces.Space) -> int:
     else:
         raise NotImplementedError(f"{action_space} action space is not supported")
 
-
+def get_gpu_free_memory_mb(gpu_id: int) -> tuple[float, float]:
+    """返回 (free_mb, total_mb)，基于整卡 NVML 统计。"""
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_id)
+        mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        free_mb = mem.free / (1024 ** 2)
+        total_mb = mem.total / (1024 ** 2)
+        return free_mb, total_mb
+    except Exception:
+        # 回退：nvidia-smi
+        import subprocess
+        out = subprocess.check_output(
+            [
+                "nvidia-smi",
+                f"--query-gpu=memory.free,memory.total",
+                "--format=csv,noheader,nounits",
+                f"--id={gpu_id}",
+            ],
+            text=True,
+        )
+        free_mb, total_mb = map(float, out.strip().split(","))
+        return free_mb, total_mb
 
 def get_best_device():
 
@@ -101,23 +124,16 @@ def get_best_device():
         best_gpu = 0
 
         for i in range(num_gpus):
-            props = torch.cuda.get_device_properties(i)
-        
-            total_memory = props.total_memory
-            
-            allocated = torch.cuda.memory_allocated(i)
-            reserved = torch.cuda.memory_reserved(i)
-           
-            free_memory = total_memory - (allocated + reserved)
+            free_memory, total_memory = get_gpu_free_memory_mb(i)
 
-            print(f"GPU {i}: total {total_memory/1e6:.0f}MB, free {free_memory/1e6:.0f}MB")
+            print(f"GPU {i}: total {total_memory:.0f}MB, free {free_memory:.0f}MB")
 
             if free_memory > max_free:
                 max_free = free_memory
                 best_gpu = i
 
         device = torch.device(f"cuda:{best_gpu}")
-        print(f"Using GPU {best_gpu} with approx {max_free/1e6:.0f} MB free memory.")
+        print(f"Using GPU {best_gpu} with approx {max_free:.0f} MB free memory.")
     return device
 
 def set_seed(seed):

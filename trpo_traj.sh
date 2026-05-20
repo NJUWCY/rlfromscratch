@@ -6,4 +6,5 @@ python run_trpo.py \
   train_action_deterministic=false \
   algorithm.rescale=true \
   algorithm.collect_traj=true \
-  env.name=Hopper-v5
+  env.name=Hopper-v5 \
+  env.obs_norm=false

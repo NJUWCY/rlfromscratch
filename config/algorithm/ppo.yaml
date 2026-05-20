@@ -1,0 +1,21 @@
+name: PPO
+onpolicy: true
+buffer_name: ReplayBuffer
+trajnum: 10
+critic_lr: 3e-4
+actor_lr: 3e-4
+optimizer: Adam
+hidden_sizes: [64, 64]
+lambda_: 0.95
+advan_norm: true
+rescale: true
+collect_traj: false
+gae: true
+eps_clip: 0.2
+value_coef: 0.25
+use_entropy_loss: true
+entropy_coef: 0.0
+update_epochs: 10
+minibatch_size: 64
+use_grad_clip: true
+max_grad_norm: 0.5
