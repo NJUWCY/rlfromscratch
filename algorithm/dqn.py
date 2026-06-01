@@ -87,7 +87,7 @@ class DQN(OffPolicyAlgorithm):
         if self.use_target:
             if self.target_update_method == "soft":
                 self._target_soft_update()
-            elif self.interaction_step%self.target_update_interval==0:
+            elif self.gradient_step%self.target_update_interval==0:
                 self._target_hard_update()
 
 

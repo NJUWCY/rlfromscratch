@@ -7,6 +7,9 @@ from gymnasium.spaces import Space
 from torch.distributions import Normal, TransformedDistribution, Independent
 from torch.distributions.transforms import AffineTransform, TanhTransform
 
+EPS = 1e-8
+
+
 class AtariDQNNetwork(nn.Module):
     def __init__(self, input_shape:Union[tuple, list], num_actions):
         """
@@ -149,7 +152,8 @@ class GaussianActor(Actor):
         dist = Independent(Normal(mu,std), 1) # this will be seen as (batch,) action_dim-dimension distributions instead of batch*action_dim 1-dimension distributions
         u = dist.rsample()
         actions = torch.tanh(u)*self.scale + self.loc
-        log_probs = dist.log_prob(u) - torch.log(1-torch.tanh(u).pow(2)).sum(-1, keepdim=True) # the log_prob of the action after transformation
+        log_probs = dist.log_prob(u) - torch.log(1-torch.tanh(u).pow(2)+EPS).sum(-1, keepdim=False)-torch.log(self.scale).sum() # the log_prob of the action after transformation
+        # log_probs's shape
         return actions, log_probs
 
     def get_dist(self, states:torch.Tensor):

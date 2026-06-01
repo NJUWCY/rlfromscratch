@@ -9,6 +9,7 @@ critic_optimizer: Adam
 actor_optimizer: Adam
 temp_optimizer: Adam
 
+double_critic: true
 use_target: true
 target_update_method: soft
 target_update_interval: 1
@@ -16,10 +17,10 @@ target_update_tau: 0.005
 batch_size: 256
 
 
-learn_temp: true
+learn_temp: false
 init_temp: 0.2
 target_entropy: -1.0
-double_critic: true
+
 
 hidden_sizes: [256, 256]
 activation: relu
