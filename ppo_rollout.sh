@@ -7,10 +7,13 @@ python run_ppo.py \
   train_action_deterministic=false \
   algorithm.rescale=true \
   algorithm.collect_traj=false \
-  env.name=HalfCheetah-v5 \
+  env.name=Humanoid-v5 \
   algorithm.buffer_name=ReplayBuffer \
   interact_per_epoch=2048 \
   algorithm.update_epochs=5 \
-  algorithm.minibatch_size=64 \
-  algorithm.use_grad_clip=false
+  algorithm.minibatch_size=128 \
+  algorithm.use_grad_clip=true \
+  algorithm.advan_norm=false \
+  "$@"
+
 

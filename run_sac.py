@@ -16,8 +16,9 @@ from algorithm import OffPolicyAlgorithm, ALGORITHM_DICT, SAC
 from utils.utils import get_best_device, set_seed
 from logger.logger import Logger 
 from memory import BUFFER_DICT,ReplayBuffer, TrajectoryRollout
-from agent.agent import GaussianAgent
-
+from agent import A2CAgent, SACAgent
+from utils.networks import GaussianActor, QFunction, MLPNetwork, DoubleQFunction
+from utils import ACTIVATION_DICT
 
 def get_args(cfg: DictConfig):
     
@@ -41,16 +42,45 @@ def main(cfg: DictConfig):
     logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args.algorithm, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
 
     logging.info("Creating the ReplayBuffer...")
-    if args.algorithm.buffer_name=="TrajectoryRollout":
-        buffer = TrajectoryRollout(training_envs.observation_space,training_envs.action_space, args.algorithm.trajnum, args.env.max_episode_length, args.algorithm.gamma)
-    else:
-        buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.interact_per_epoch, training_envs.num_envs,onpolicy=args.algorithm.onpolicy)
+    
+    buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.algorithm.buffer_size//training_envs.num_envs, training_envs.num_envs, onpolicy=args.algorithm.onpolicy)
 
     logging.info("Creating the Agent...")
-    agent = GaussianAgent(training_envs.observation_space, training_envs.action_space, device,rescale=args.algorithm.rescale ,hidden_sizes=args.algorithm.hidden_sizes, activation=torch.nn.Tanh)
-    
-        
 
+    activation = ACTIVATION_DICT[args.algorithm.activation]
+    actor = GaussianActor(
+        training_envs.observation_space, 
+        training_envs.action_space, 
+        MLPNetwork, 
+        device=device,
+        rescale=args.algorithm.rescale,
+        action_bound_method="tanh",
+        hidden_sizes=args.algorithm.hidden_sizes, 
+        activation=activation)
+
+    double_critic = args.algorithm.double_critic
+    target_critic = None
+    if double_critic:
+        critic = DoubleQFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=activation)
+        target_critic = DoubleQFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=activation) if args.algorithm.use_target else None
+
+    else:
+        critic = QFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=activation)
+        target_critic = QFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=activation) if args.algorithm.use_target else None
+
+    agent = SACAgent(
+        training_envs.observation_space, 
+        training_envs.action_space, 
+        device, 
+        actor, 
+        critic,
+        target_critic=target_critic,
+        use_target=args.algorithm.use_target, 
+        target_update_method=args.algorithm.target_update_method,
+        target_update_tau=args.algorithm.target_update_tau,
+        double_critic=double_critic)
+
+    
     # create trainer 
     algorithm: OffPolicyAlgorithm | SAC
     

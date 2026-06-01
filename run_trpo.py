@@ -16,7 +16,8 @@ from algorithm import TRPO, OnPolicyAlgorithm, ALGORITHM_DICT
 from utils.utils import get_best_device, set_seed
 from logger.logger import Logger 
 from memory import BUFFER_DICT,ReplayBuffer, TrajectoryRollout
-from agent.agent import GaussianAgent
+from agent import A2CAgent
+from utils.networks import GaussianActor, ValueFunction, MLPNetwork
 
 
 def get_args(cfg: DictConfig):
@@ -47,7 +48,19 @@ def main(cfg: DictConfig):
         buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.interact_per_epoch, training_envs.num_envs,onpolicy=args.algorithm.onpolicy)
 
     logging.info("Creating the Agent...")
-    agent = GaussianAgent(training_envs.observation_space, training_envs.action_space, device,rescale=args.algorithm.rescale ,hidden_sizes=args.algorithm.hidden_sizes, activation=torch.nn.Tanh)
+    actor = GaussianActor(
+        training_envs.observation_space, 
+        training_envs.action_space, 
+        MLPNetwork, 
+        device=device,
+        rescale=args.algorithm.rescale,
+        action_bound_method="tanh",
+        hidden_sizes=args.algorithm.hidden_sizes, 
+        activation=torch.nn.Tanh)
+
+    critic = ValueFunction(training_envs.observation_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=torch.nn.Tanh)
+
+    agent = A2CAgent(training_envs.observation_space, training_envs.action_space, device, actor, critic)
     
         
 

@@ -42,6 +42,7 @@ class BaseAlgorithm(ABC):
         self.num_testing_envs = args.env.num_testing_envs
         self.test_interval = args.test_interval
         self.interact_per_epoch = args.interact_per_epoch
+        self.gradient_step_per_epoch = args.gradient_step_per_epoch
         self.test_episodes = args.test_episodes
         self.train_action_deterministic = args.train_action_deterministic
         self.save_interval = args.save_interval

@@ -8,13 +8,6 @@ from gymnasium.spaces import Discrete, Space
 
 
 
-OPTIMIZER_DICT = {
-    "Adam": torch.optim.Adam,
-    "SGD": torch.optim.SGD,
-    "RMSprop": torch.optim.RMSprop,
-    "AdamW": torch.optim.AdamW,
-}
-
 
 class RunningMeanStd:
     """Calculates the running mean and std of a data stream.

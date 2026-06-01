@@ -5,7 +5,7 @@ from utils.result import Result
 from logger.logger import Logger
 import numpy as np
 from agent.agent import AtariDQNAgent
-from utils.utils import OPTIMIZER_DICT
+from utils import OPTIMIZER_DICT
 
 
 
@@ -14,7 +14,7 @@ class DQN(OffPolicyAlgorithm):
     
     """DQN algorithm implementation."""
 
-    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: AtariDQNAgent, logger: Logger, device, save_pth: str,best_pth: str, args, target_critic=None):
+    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: AtariDQNAgent, logger: Logger, device, save_pth: str,best_pth: str, args, target_agent=None):
         super(DQN, self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth,best_pth, args)
         
         algo_args = args.algorithm
@@ -30,7 +30,7 @@ class DQN(OffPolicyAlgorithm):
         self.device = device
         
         if self.use_target:
-            self.target_critic = target_critic.to(self.device)
+            self.target_agent = target_agent.to(self.device)
             self._target_hard_update()
 
         self.target_update_method = algo_args.target_update_method

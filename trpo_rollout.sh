@@ -6,6 +6,8 @@ python run_trpo.py \
   train_action_deterministic=false \
   algorithm.rescale=true \
   algorithm.collect_traj=false \
-  env.name=HalfCheetah-v5 \
+  env.name=Hopper-v5 \
   algorithm.buffer_name=ReplayBuffer \
-  interact_per_epoch=2000
+  interact_per_epoch=2000 \
+  algorithm.critic_update_steps=10 \
+  "$@"

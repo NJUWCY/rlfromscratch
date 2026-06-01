@@ -19,6 +19,7 @@ class OffPolicyAlgorithm(BaseAlgorithm, ABC):
 
     def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer, agent: AgentBase, logger: Logger, device,  save_pth: str,best_pth:str, args):
         super(OffPolicyAlgorithm,self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth,best_pth, args)
+        self.start_train_step = args.start_train_step
         
 
     
@@ -26,6 +27,8 @@ class OffPolicyAlgorithm(BaseAlgorithm, ABC):
     def update(self, batch, start_train)-> Result:
         with Result("buffer") as result:
             self._update_buffer(batch)
+        
+        result.add_metric("buffer_size",self.buffer.buffer_size)
         if start_train:
             update_policy_log = self._update_policy()
             result.add(update_policy_log)
@@ -49,7 +52,7 @@ class OffPolicyAlgorithm(BaseAlgorithm, ABC):
         
 
     def start_train(self):
-        return self.interaction_step>=5000
+        return self.interaction_step>=self.start_train_step
 
 
 

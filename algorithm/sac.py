@@ -4,54 +4,44 @@ import torch
 from utils.result import Result
 from logger.logger import Logger
 import numpy as np
-from agent.agent import AtariDQNAgent
-from utils.utils import OPTIMIZER_DICT
-
-
+from agent import AgentBase, A2CAgent, SACAgent
+from utils import OPTIMIZER_DICT
+import math
 
 
 class SAC(OffPolicyAlgorithm):
     
     """DQN algorithm implementation."""
 
-    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: AtariDQNAgent, logger: Logger, device, save_pth: str,best_pth: str, args, target_agent=None):
+    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: SACAgent, logger: Logger, device, save_pth: str,best_pth: str, args):
         super(SAC, self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth,best_pth, args)
         
         algo_args = args.algorithm
-        assert algo_args.name=="DQN", "The method name in args must be 'dqn' for DQN algorithm."
-        self.lr = algo_args.learning_rate
-        self.start_epsilon = algo_args.start_epsilon
-        self.epsilon = algo_args.start_epsilon
-        self.end_epsilon = algo_args.end_epsilon
-        self.epsilon_timestep = algo_args.epsilon_timestep
-        self.epsilon_schedular = algo_args.epsilon_schedular
-        self.use_target = algo_args.use_target 
+
+        self.critic_lr = algo_args.critic_lr
+        self.actor_lr = algo_args.actor_lr
+        self.temp_lr = algo_args.temp_lr
+        
+       
         self.batch_size = algo_args.batch_size
-        self.device = device
         
-        if self.use_target:
-            self.target_agent = target_agent.to(self.device)
-            self._target_hard_update()
 
-        self.target_update_method = algo_args.target_update_method
+        self.agent = agent
+
+        self.use_target = algo_args.use_target 
         self.target_update_interval = algo_args.target_update_interval
-        self.tau = algo_args.target_update_tau
-
 
         
-        self.optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.optimizer](self.agent.parameters(), lr=self.lr)
-        
-        
-    
-    def _target_hard_update(self):
-        self.target_agent.load_state_dict(self.agent.state_dict())
-    
-    def _target_soft_update(self):
-        for target_param, param in zip(self.target_agent.parameters(), self.agent.parameters()):
-            target_param.data.copy_(
-                self.tau * param.data + (1 - self.tau) * target_param.data
-            )
+        self.critic_optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.critic_optimizer](self.agent.critic.parameters(), lr=self.critic_lr)
+        self.actor_optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.actor_optimizer](self.agent.actor.parameters(), lr=self.actor_lr)
 
+        self.init_temp = algo_args.init_temp
+        self.log_temp = torch.nn.Parameter(torch.tensor(math.log(self.init_temp),device=self.device,dtype=torch.float32))
+        self.learn_temp = algo_args.learn_temp
+        if self.learn_temp:
+            self.temp_optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.temp_optimizer]([self.log_temp], lr=self.temp_lr)
+        
+        self.target_entropy = -self.action_dim
 
     def _update_buffer(self, batch):
         self.buffer.add(batch)
@@ -66,48 +56,55 @@ class SAC(OffPolicyAlgorithm):
             rewards = torch.from_numpy(rewards).float().to(self.device).unsqueeze(1)
             dones = torch.from_numpy(dones).float().to(self.device).unsqueeze(1)
 
-            # calculate the DQN loss    
+            # calculate the q loss    
             with torch.no_grad():
-                if self.use_target:
-                    target = rewards + (1 - dones) * self.gamma * self.target_agent.get_max_q(next_states)
-                else:
-                    target = rewards + (1 - dones) * self.gamma * self.agent.get_max_q(next_states)
-            q = self.agent.get_q(states, actions)
+                target = rewards + (1 - dones) * self.gamma * self.agent.get_value(next_states,temperature=self.log_temp.detach().exp())
+                    
+            q1, q2 = self.agent.get_double_q_function(states, actions)
             
-            td_error = target - q
+            td_error1 = target - q1
+            td_error2 = target - q2
+            
 
-            loss = torch.mean(td_error**2)
+            q_loss = 1/2*(torch.mean(td_error1**2) + torch.mean(td_error2**2))
             
             # do gradient update to the agent 
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+            self.critic_optimizer.zero_grad()
+            q_loss.backward()
+            self.critic_optimizer.step()
 
 
-        if self.use_target:
-            if self.target_update_method == "soft":
-                self._target_soft_update()
-            elif self.interaction_step%self.target_update_interval==0:
-                self._target_hard_update()
+
+            # update actor
+            
+            rsample_actions, log_probs = self.agent.resample_action(states)
+
+            q = self.agent.get_q_function(states, rsample_actions)
+            actor_loss = (self.log_temp.detach().exp() * log_probs - q).mean()
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
+
+            if self.learn_temp:
+                dist = self.agent.dist(states)
+                temp_loss = -self.log_temp.exp() * (dist.base_dist.entropy().detach()+self.target_entropy).mean()
+                self.temp_optimizer.zero_grad()
+                temp_loss.backward()
+                self.temp_optimizer.step()
+            
+
+            if self.use_target:
+                if self.gradient_step%self.target_update_interval==0:
+                    self.agent.update_target()
 
 
-        result.add_metric("network/loss", loss.item())
-        result.add_metric("td_error", td_error.mean().item())
-        result.add_metric("q_value_mean", q.mean().item())
-       
-
+        result.add_metric("critic1/td_error", td_error1.mean().item())
+        result.add_metric("critic2/td_error", td_error2.mean().item())
+        result.add_metric("critic/q_loss", q_loss.item())
+        result.add_metric("actor/loss", actor_loss.item())
+        if self.learn_temp:
+            result.add_metric("temp/loss", temp_loss.item())
+        
         self.gradient_step += 1
         return result
 
-    def random_choose_action(self):
-        """You can use this function to implement epsilon-greedy exploration strategy"""
-        if self.epsilon_schedular=="linear":
-            self.epsilon = max(self.end_epsilon, self.start_epsilon - self.interaction_step / self.epsilon_timestep * (self.start_epsilon - self.end_epsilon))
-        else:
-            self.epsilon = self.start_epsilon
-        return np.random.rand() < self.epsilon
-
-    def interact_with_envs(self):
-        batch, result = super().interact_with_envs()
-        result.add_metric("epsilon",self.epsilon)
-        return batch, result

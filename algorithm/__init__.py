@@ -12,5 +12,6 @@ from .sac import SAC
 ALGORITHM_DICT = {
     "DQN": DQN,
     "TRPO":TRPO,
-    "PPO": PPO
+    "PPO": PPO,
+    "SAC": SAC
 }

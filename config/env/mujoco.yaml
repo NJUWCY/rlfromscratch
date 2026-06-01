@@ -1,0 +1,3 @@
+max_episode_length: 1000
+num_training_envs: 8
+obs_norm: false

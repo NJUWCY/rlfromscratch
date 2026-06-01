@@ -6,5 +6,7 @@ python run_trpo.py \
   train_action_deterministic=false \
   algorithm.rescale=true \
   algorithm.collect_traj=true \
-  env.name=Hopper-v5 \
-  env.obs_norm=false
+  env.name=HalfCheetah-v5 \
+  env.obs_norm=false \
+  algorithm.critic_update_steps=15 \
+  "$@"

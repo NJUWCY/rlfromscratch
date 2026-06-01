@@ -5,7 +5,7 @@ import numpy as np
 
 
 from utils.result import Result
-from utils.utils import OPTIMIZER_DICT
+from utils import OPTIMIZER_DICT
 from memory.memory import ReplayBuffer, TrajectoryRollout
 from agent.agent import AgentBase
 from logger.logger import Logger
@@ -67,9 +67,9 @@ class PPO(OnPolicyAlgorithm):
         total_loss = actor_loss + self.value_coef*critic_loss 
         if self.use_entropy_loss:
             # since the tanh transformation makes the entropy calculation have no closed form, we use the base_dist as the entropy
-            entropy_loss = self.agent.dist(states).base_dist.entropy().mean()
-            total_loss -= self.entropy_coef*entropy_loss 
-            result_dict['actor/entropy_loss'] = entropy_loss.item()
+            entropy = self.agent.dist(states).base_dist.entropy().mean()
+            total_loss -= self.entropy_coef*entropy
+            result_dict['actor/entropy'] = entropy.item()
         self.optimizer.zero_grad()
         total_loss.backward()
         if self.use_grad_clip:
