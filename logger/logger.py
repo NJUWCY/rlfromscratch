@@ -3,8 +3,14 @@ import os
 from typing import Any
 
 from utils.result import Result 
-import wandb 
-import swanlab
+try:
+    import wandb
+except ImportError:
+    wandb = None
+try:
+    import swanlab
+except ImportError:
+    swanlab = None
 from torch.utils.tensorboard import SummaryWriter
 from rich.console import Console 
 from rich.table import Table 
@@ -39,8 +45,12 @@ class Logger:
         self.use_swanlab = use_swanlab
         self.log_dir = log_dir
         if self.use_wandb:
+            if wandb is None:
+                raise ImportError("wandb is enabled but the wandb package is not installed.")
             wandb.init(project=project_name, name=run_name,dir=log_dir)
         if self.use_swanlab:
+            if swanlab is None:
+                raise ImportError("swanlab is enabled but the swanlab package is not installed.")
             swanlab.init(project=project_name, name=run_name,logdir=log_dir, config=config)
         
         if self.use_tensorboard:
