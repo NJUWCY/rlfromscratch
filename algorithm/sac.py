@@ -86,8 +86,9 @@ class SAC(OffPolicyAlgorithm):
             self.actor_optimizer.step()
 
             if self.learn_temp:
-                dist = self.agent.dist(states)
-                temp_loss = -self.log_temp.exp() * (dist.base_dist.entropy().detach()+self.target_entropy).mean()
+                
+                # why here use the log_temp instead of temp?
+                temp_loss = -self.log_temp.exp() * (log_probs.detach()+self.target_entropy).mean()
                 self.temp_optimizer.zero_grad()
                 temp_loss.backward()
                 self.temp_optimizer.step()
@@ -98,12 +99,19 @@ class SAC(OffPolicyAlgorithm):
                     self.agent.update_target()
 
 
-        result.add_metric("critic1/td_error", td_error1.mean().item())
-        result.add_metric("critic2/td_error", td_error2.mean().item())
+        with torch.no_grad():
+            dist = self.agent.dist(states)
+            mu, std = dist.base_dist.mean, dist.base_dist.stddev
+            result.add_metric("actor/mean_action", mu.mean().item())
+            result.add_metric("actor/std_action", std.mean().item())
+        result.add_metric("critic/q_value",q.mean().item())
+        result.add_metric("critic1/td_error_abs", torch.abs(td_error1).mean().item())
+        result.add_metric("critic2/td_error_abs", torch.abs(td_error2).mean().item())
         result.add_metric("critic/q_loss", q_loss.item())
         result.add_metric("actor/loss", actor_loss.item())
         if self.learn_temp:
             result.add_metric("temp/loss", temp_loss.item())
+            result.add_metric("temp/value", self.log_temp.exp().item())
         
         self.gradient_step += 1
         return result

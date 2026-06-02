@@ -19,3 +19,4 @@ update_epochs: 10
 minibatch_size: 64
 use_grad_clip: true
 max_grad_norm: 0.5
+state_dependent_std: false

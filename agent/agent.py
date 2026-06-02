@@ -67,11 +67,33 @@ class AgentBase(nn.Module, ABC):
 
 class AtariDQNAgent(AgentBase):
     _config_attrs = AgentBase._config_attrs + ("num_actions", "observation_shape")
-    def __init__(self, observation_space: Space, action_space: Space, device):
+    def __init__(self, observation_space: Space, action_space: Space, device, use_target=False, target_network=None, target_update_tau=0.005,target_update_method="hard"):
         super(AtariDQNAgent, self).__init__(observation_space, action_space, device)
         self.num_actions = action_space.n 
         self.observation_shape = observation_space.shape
         self.network = AtariDQNNetwork(observation_space.shape, action_space.n)
+        self.use_target = use_target
+        if self.use_target:
+            self.target_network = target_network
+        self.target_update_tau = target_update_tau
+        self.target_update_method = target_update_method
+    
+    def _target_hard_update(self):
+        self.target_network.load_state_dict(self.network.state_dict())
+    
+    def _target_soft_update(self):
+        for target_param, param in zip(self.target_network.parameters(), self.network.parameters()):
+            target_param.data.copy_(
+                self.target_update_tau * param.data + (1 - self.target_update_tau) * target_param.data
+            )
+    
+    def target_update(self):
+        if self.target_update_method=="hard":
+            self._target_hard_update()
+        elif self.target_update_method=="soft":
+            self._target_soft_update()
+        else:
+            raise ValueError("target_update_method must be either 'hard' or 'soft'")
 
     
 
@@ -96,17 +118,23 @@ class AtariDQNAgent(AgentBase):
 
         return action.cpu().numpy(), None
 
-    def get_q(self, states:np.ndarray, actions:Union[np.ndarray, torch.Tensor]):
+    def get_q(self, states:np.ndarray, actions:Union[np.ndarray, torch.Tensor],target=False):
         states = atari_state_preprocess_function(self.observation_space, states)
         states, actions = to_correct_device_tensor(states, self.device) ,to_correct_device_tensor(actions, self.device, torch.long)
-        all_q_values = self.network(states)
+        if target and self.use_target:
+            all_q_values = self.target_network(states)
+        else:
+            all_q_values = self.network(states)
         q_values = all_q_values.gather(1, actions)
         return q_values 
 
-    def get_max_q(self, states:np.ndarray):
+    def get_max_q(self, states:np.ndarray,target=False):
         states = atari_state_preprocess_function(self.observation_space, states)
         states = to_correct_device_tensor(states, self.device)
-        all_q_values = self.network(states)
+        if target and self.use_target:
+            all_q_values = self.target_network(states)
+        else:
+            all_q_values = self.network(states)
         q_max = torch.max(all_q_values, dim=1, keepdim=True).values
         return q_max 
 

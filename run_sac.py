@@ -51,12 +51,14 @@ def main(cfg: DictConfig):
     actor = GaussianActor(
         training_envs.observation_space, 
         training_envs.action_space, 
-        MLPNetwork, 
+        net_architecture=MLPNetwork, 
+        state_dependent_std=args.algorithm.state_dependent_std,
         device=device,
         rescale=args.algorithm.rescale,
         action_bound_method="tanh",
         hidden_sizes=args.algorithm.hidden_sizes, 
-        activation=activation)
+        activation=activation
+        )
 
     double_critic = args.algorithm.double_critic
     target_critic = None

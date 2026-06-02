@@ -14,7 +14,7 @@ class DQN(OffPolicyAlgorithm):
     
     """DQN algorithm implementation."""
 
-    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: AtariDQNAgent, logger: Logger, device, save_pth: str,best_pth: str, args, target_agent=None):
+    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: AtariDQNAgent, logger: Logger, device, save_pth: str,best_pth: str, args):
         super(DQN, self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth,best_pth, args)
         
         algo_args = args.algorithm
@@ -29,13 +29,10 @@ class DQN(OffPolicyAlgorithm):
         self.batch_size = algo_args.batch_size
         self.device = device
         
-        if self.use_target:
-            self.target_agent = target_agent.to(self.device)
-            self._target_hard_update()
+        
 
-        self.target_update_method = algo_args.target_update_method
         self.target_update_interval = algo_args.target_update_interval
-        self.tau = algo_args.target_update_tau
+        
 
 
         
@@ -43,14 +40,6 @@ class DQN(OffPolicyAlgorithm):
         
         
     
-    def _target_hard_update(self):
-        self.target_critic.load_state_dict(self.agent.state_dict())
-    
-    def _target_soft_update(self):
-        for target_param, param in zip(self.target_agent.parameters(), self.agent.parameters()):
-            target_param.data.copy_(
-                self.tau * param.data + (1 - self.tau) * target_param.data
-            )
 
 
     def _update_buffer(self, batch):
@@ -69,9 +58,9 @@ class DQN(OffPolicyAlgorithm):
             # calculate the DQN loss    
             with torch.no_grad():
                 if self.use_target:
-                    target = rewards + (1 - dones) * self.gamma * self.target_agent.get_max_q(next_states)
+                    target = rewards + (1 - dones) * self.gamma * self.agent.get_max_q(next_states,target=True)
                 else:
-                    target = rewards + (1 - dones) * self.gamma * self.agent.get_max_q(next_states)
+                    target = rewards + (1 - dones) * self.gamma * self.agent.get_max_q(next_states,target=False)
             q = self.agent.get_q(states, actions)
             
             td_error = target - q
@@ -84,11 +73,9 @@ class DQN(OffPolicyAlgorithm):
             self.optimizer.step()
 
 
-        if self.use_target:
-            if self.target_update_method == "soft":
-                self._target_soft_update()
-            elif self.gradient_step%self.target_update_interval==0:
-                self._target_hard_update()
+        if self.use_target and self.gradient_step % self.target_update_interval == 0:
+            self.agent.target_update()
+            
 
 
         result.add_metric("network/loss", loss.item())

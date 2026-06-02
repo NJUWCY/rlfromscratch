@@ -19,3 +19,4 @@ rescale: true
 collect_traj: false
 eigenvalue_reg: 0.1
 gae: true
+state_dependent_std: false

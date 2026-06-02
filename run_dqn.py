@@ -48,6 +48,10 @@ def main(cfg: DictConfig):
     agent = AtariDQNAgent(training_envs.observation_space, training_envs.action_space, device)
     target_agent = AtariDQNAgent(training_envs.observation_space, training_envs.action_space, device) if args.algorithm.use_target else None
     
+    if args.algorithm.use_target:
+        agent = AtariDQNAgent(training_envs.observation_space, training_envs.action_space, device,use_target=args.algorithm.use_target, target_network=target_agent, target_update_tau=args.algorithm.target_update_tau) 
+    else:
+        agent = AtariDQNAgent(training_envs.observation_space, training_envs.action_space, device)
         
 
     # create trainer 
@@ -58,7 +62,7 @@ def main(cfg: DictConfig):
                                                logger=logger, device=device, 
                                                save_pth=os.path.join(args.log_dir, "newest_model.pth"), 
                                                best_pth=os.path.join(args.log_dir, "best_model.pth"),
-                                               args=args,target_agent=target_agent)
+                                               args=args)
 
     logging.info("Begin Training...")
     algorithm.run()

@@ -85,12 +85,16 @@ class GaussianActor(Actor):
     """
     use network to compute the mean and standard deviation of the Gaussian distribution
     """
-    def __init__(self, observation_space:Space, action_space:Space, net_architecture:nn.Module,device="cpu", clip_sigma=True, action_eps=1e-6, rescale=True, action_bound_method="tanh", **kwargs):
+    def __init__(self, observation_space:Space, action_space:Space, net_architecture:nn.Module,device="cpu",state_dependent_std=False, clip_sigma=True, action_eps=1e-6, rescale=True, action_bound_method="tanh", **kwargs):
         super(GaussianActor, self).__init__(observation_space, action_space)
 
         self.mu = net_architecture(observation_space.shape[0], action_space.shape[0], **kwargs)
         # you can use network to compute the log_sigma according to the state
-        self.log_sigma =  nn.Parameter(torch.zeros(size=(1,action_space.shape[0]))) 
+        self.state_dependent_std = state_dependent_std
+        if state_dependent_std:
+            self.log_sigma = net_architecture(observation_space.shape[0], action_space.shape[0], **kwargs)
+        else:
+            self.log_sigma =  nn.Parameter(torch.zeros(size=(1,action_space.shape[0]))) 
         self.clip_sigma = clip_sigma
         self.action_eps = action_eps
         self.device = device
@@ -103,10 +107,15 @@ class GaussianActor(Actor):
 
     def forward(self,x:torch.Tensor):
         mu = self.mu(x)
-        log_sigma = self.log_sigma
+        if self.state_dependent_std:
+            log_sigma = self.log_sigma(x)
+        else:
+            log_sigma = self.log_sigma
         if self.clip_sigma:
             log_sigma = log_sigma.clamp(min=-5, max=2)
-        sigma = torch.exp(log_sigma).expand_as(mu)
+        sigma = torch.exp(log_sigma)
+        if not self.state_dependent_std:
+            sigma = sigma.expand_as(mu)
         return mu, sigma
     
     def _action_clamp(self,actions:torch.Tensor):

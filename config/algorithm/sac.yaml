@@ -4,7 +4,7 @@ buffer_name: ReplayBuffer
 buffer_size: 1000000
 critic_lr: 3e-4
 actor_lr: 3e-4
-temp_lr: 1e-4
+temp_lr: 3e-4
 critic_optimizer: Adam
 actor_optimizer: Adam
 temp_optimizer: Adam
@@ -27,3 +27,4 @@ activation: relu
 
 
 rescale: true
+state_dependent_std: true
