@@ -28,3 +28,5 @@ activation: relu
 
 rescale: true
 state_dependent_std: true
+
+update_log_temp: false

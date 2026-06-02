@@ -40,6 +40,7 @@ class SAC(OffPolicyAlgorithm):
         self.learn_temp = algo_args.learn_temp
         if self.learn_temp:
             self.temp_optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.temp_optimizer]([self.log_temp], lr=self.temp_lr)
+        self.update_log_temp = algo_args.update_log_temp
         
         self.target_entropy = -self.action_dim
 
@@ -86,9 +87,11 @@ class SAC(OffPolicyAlgorithm):
             self.actor_optimizer.step()
 
             if self.learn_temp:
-                
-                # why here use the log_temp instead of temp?
-                temp_loss = -self.log_temp.exp() * (log_probs.detach()+self.target_entropy).mean()
+                if self.update_log_temp:
+                    # why here use the log_temp instead of temp?
+                    temp_loss = -self.log_temp * (log_probs.detach()+self.target_entropy).mean()
+                else:
+                    temp_loss = self.log_temp.exp() * (log_probs.detach()+self.target_entropy).mean()
                 self.temp_optimizer.zero_grad()
                 temp_loss.backward()
                 self.temp_optimizer.step()
