@@ -1,4 +1,5 @@
 from memory.memory import ReplayBuffer, TrajectoryRollout
+from memory.expert_dataset import ExpertDataset, load_expert_data
 
 BUFFER_DICT = {
     "ReplayBuffer": ReplayBuffer,

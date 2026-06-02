@@ -205,6 +205,33 @@ class A2CAgent(AgentBase):
         return self.actor.get_log_prob(states, actions)
 
 
+class PolicyAgent(AgentBase):
+    _config_attrs = AgentBase._config_attrs
+
+    def __init__(
+        self,
+        observation_space: Space,
+        action_space: Space,
+        device: torch.device,
+        actor: Actor,
+    ):
+        super(PolicyAgent, self).__init__(observation_space, action_space, device)
+        self.actor = actor
+
+    def dist(self, states):
+        states = to_correct_device_tensor(states, self.device)
+        return self.actor.get_dist(states)
+
+    def select_action(self, states: Union[np.ndarray, torch.Tensor], deterministic=False) -> Tuple[np.ndarray, Dict]:
+        states = to_correct_device_tensor(states, self.device)
+        return self.actor.get_action(states, deterministic)
+
+    def log_prob(self, states: Union[np.ndarray, torch.Tensor], actions: Union[np.ndarray, torch.Tensor]):
+        states = to_correct_device_tensor(states, self.device)
+        actions = to_correct_device_tensor(actions, self.device)
+        return self.actor.get_log_prob(states, actions)
+
+
 class SACAgent(A2CAgent):
     _config_attrs = A2CAgent._config_attrs + (
         "use_target",
