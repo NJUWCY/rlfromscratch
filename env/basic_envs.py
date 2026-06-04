@@ -25,6 +25,9 @@ class Monitor(gym.Wrapper[np.ndarray, int, np.ndarray, int]):
             ep_rew = sum(self.rewards)
             ep_info = {"r": round(ep_rew, 6)}
             info["episode"] = ep_info
+            if not terminated and truncated:
+                info['truncated'] = True 
+                info['last_observation'] = observation
         return observation, reward, terminated, truncated, info
 
 def make_basic_env(env_name:str, max_episode_length=1000):

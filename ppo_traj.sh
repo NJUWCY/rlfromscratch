@@ -6,10 +6,9 @@ python run_ppo.py \
   test_interval=50 \
   train_action_deterministic=false \
   algorithm.rescale=true \
-  algorithm.collect_traj=false \
+  algorithm.collect_traj=true \
   env.name=Hopper-v5 \
-  algorithm.buffer_name=ReplayBuffer \
-  interact_per_epoch=1024 \
+  algorithm.buffer_name=TrajectoryRollout \
   algorithm.update_epochs=5 \
   algorithm.minibatch_size=128 \
   algorithm.use_grad_clip=true \

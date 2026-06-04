@@ -28,6 +28,9 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
             self.traj_rollout = buffer
             self.trajnum = buffer.trajnum 
             self.max_episode_length = buffer.max_episode_length
+            self.last_states = np.zeros((self.trajnum, *self.observation_space.shape), dtype=self.observation_space.dtype)
+        else:
+            self.last_states = np.zeros((self.num_training_envs, *self.observation_space.shape), dtype=self.observation_space.dtype)
         self.gae = args.algorithm.gae
         self.lambda_ = args.algorithm.lambda_
            
@@ -65,9 +68,9 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
         traj_states = [[] for _ in range(self.num_training_envs)]
         traj_actions = [[] for _ in range(self.num_training_envs)]
         traj_rewards = [[] for _ in range(self.num_training_envs)]
-        traj_dones = [[] for _ in range(self.num_training_envs)]
         traj_log_probs = [[] for _ in range(self.num_training_envs)]
-        # traj_truncateds = [[] for _ in range(self.num_training_envs)]
+        traj_dones = [[] for _ in range(self.num_training_envs)]
+
         with Result("interact") as result:
             while not self.traj_rollout.full:
                 with torch.no_grad():
@@ -79,15 +82,24 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
                     traj_states = [traj_states[i]+[self.observations[i]] for i in range(self.num_training_envs)]
                     traj_actions = [traj_actions[i]+[actions[i]] for i in range(self.num_training_envs)]
                     traj_rewards = [traj_rewards[i]+[rewards[i]] for i in range(self.num_training_envs)]
-                    traj_dones = [traj_dones[i]+[terminateds[i]] for i in range(self.num_training_envs)]
                     traj_log_probs = [traj_log_probs[i]+[log_probs[i]] for i in range(self.num_training_envs)]
+                    traj_dones = [traj_dones[i]+[terminateds[i]] for i in range(self.num_training_envs)]
                     # traj_truncateds = [traj_truncateds[i]+[infos[i].get("TimeLimit.truncated",False)] for i in range(self.num_training_envs)]
 
                     for i in range(self.num_training_envs):
                         if self.traj_rollout.full:
                             break
                         info = infos[i]
+                        
+                        
                         if "episode" in info:
+                            traj_last_observations = next_observations[i]
+                            truncated = False
+                            if "truncated" in info:
+                                traj_dones[i][-1] = False 
+                                traj_last_observations = info['last_observation']
+                                truncated = True
+
                             self.episode_reward_buffer.append(info['episode']['r'])
                             self.traj_rollout.add_traj(
                                 dict(
@@ -95,7 +107,9 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
                                     actions=np.array(traj_actions[i]),
                                     rewards=np.array(traj_rewards[i]),
                                     dones=np.array(traj_dones[i]),
-                                    log_probs=np.array(traj_log_probs[i])
+                                    log_probs=np.array(traj_log_probs[i]),
+                                    last_states=np.array(traj_last_observations),
+                                    truncateds=np.array(truncated)
                                 )
                             )
                             traj_states[i] = []
@@ -129,26 +143,29 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
         states = self.traj_rollout.states
         rewards = self.traj_rollout.rewards 
         dones = self.traj_rollout.dones 
+        last_states = self.traj_rollout.last_states
+        truncateds = self.traj_rollout.truncateds
         
 
         with torch.no_grad():
             values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((self.trajnum, self.max_episode_length)).cpu().numpy()
-
+            last_values = self.agent.get_value(last_states).squeeze(1).cpu().numpy()
+        
         delta = np.zeros((self.trajnum,),dtype=np.float32)
-        last_advan = np.zeros((self.trajnum,),dtype=np.float32)
-        last_value = np.zeros((self.trajnum,),dtype=np.float32)
-        last_returns = np.zeros((self.trajnum,),dtype=np.float32)
+        last_advans = np.zeros((self.trajnum,),dtype=np.float32)
+        last_values = (1-dones[:,-1])*last_values + np.zeros((self.trajnum,),dtype=np.float32)
+        last_returns = last_values
         advantages = np.zeros((self.trajnum,self.max_episode_length),dtype=np.float32)
         returns = np.zeros((self.trajnum,self.max_episode_length),dtype=np.float32)
 
         for i in range(self.max_episode_length-1,-1,-1):
-            delta = rewards[:,i] + self.gamma*(1-dones[:,i])*last_value - values[:,i]
-            advantages[:,i] = delta + self.gamma*self.lambda_*(1-dones[:,i])*last_advan
+            delta = rewards[:,i] + self.gamma*(1-dones[:,i])*last_values - values[:,i]
+            advantages[:,i] = delta + self.gamma*self.lambda_*(1-dones[:,i])*last_advans
             returns[:,i] = rewards[:,i] + (1-dones[:,i])*self.gamma*last_returns
             
             
-            last_value = values[:,i]
-            last_advan = advantages[:,i]
+            last_values = values[:,i]
+            last_advans = advantages[:,i]
             last_returns = returns[:,i]
         if self.gae:
             return returns, advantages
@@ -159,32 +176,32 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
         states = self.buffer.buffer['states']
         rewards = self.buffer.buffer['rewards']
         dones = self.buffer.buffer['dones']
+        truncateds = self.buffer.buffer['truncateds']
+        next_states = self.buffer.buffer['next_states']
         
         num_envs, rollout_length = states.shape[0], states.shape[1]
 
         with torch.no_grad():
             values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((num_envs, rollout_length)).cpu().numpy()
-            last_value = self.agent.get_value(self.observations).squeeze(1).cpu().numpy()
+            next_values = self.agent.get_value(next_states.reshape((-1,next_states.shape[-1]))).squeeze(1).reshape((num_envs, rollout_length)).cpu().numpy()
+        
 
         advantages = np.zeros((num_envs,rollout_length),dtype=np.float32)
         returns = np.zeros((num_envs,rollout_length),dtype=np.float32)
         if self.gae:
-            delta = np.zeros((num_envs,),dtype=np.float32)
             last_advan = np.zeros((num_envs,),dtype=np.float32)
-    
+
             for i in range(rollout_length-1,-1,-1):
-                delta = rewards[:,i] + self.gamma*(1-dones[:,i])*last_value - values[:,i]
-                advantages[:,i] = delta + self.gamma*self.lambda_*(1-dones[:,i])*last_advan
-                
-                
-                last_value = values[:,i]
+                delta = rewards[:,i] + self.gamma*(1-dones[:,i])*next_values[:,i] - values[:,i]
+                advantages[:,i] = delta + self.gamma*self.lambda_*(1-dones[:,i])*(1-truncateds[:,i])*last_advan
                 last_advan = advantages[:,i]
             returns = advantages + values
             return returns, advantages
+        
         else:
-            last_returns = last_value
+            last_returns = next_values[:,-1]
             for i in range(rollout_length-1,-1,-1):
-                returns[:,i] = rewards[:,i] + (1-dones[:,i])*self.gamma*last_returns
+                returns[:,i] = rewards[:,i] + self.gamma*(1-dones[:,i])*((1-truncateds[:,i])*last_returns+truncateds[:,i]*next_values[:,i])
                 last_returns = returns[:,i]
             return returns, returns - values
 

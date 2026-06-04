@@ -81,7 +81,8 @@ class BaseAlgorithm(ABC):
                     actions=np.zeros(shape=(self.num_training_envs, interact_steps_per_env, self.action_dim),dtype=self.action_space.dtype),
                     rewards=np.zeros(shape=(self.num_training_envs, interact_steps_per_env),dtype=np.float32),
                     next_states=np.zeros(shape=(self.num_training_envs, interact_steps_per_env, *self.observation_space.shape),dtype=self.observation_space.dtype),
-                    dones=np.zeros(shape=(self.num_training_envs, interact_steps_per_env),dtype=np.float32)) 
+                    dones=np.zeros(shape=(self.num_training_envs, interact_steps_per_env),dtype=np.float32),
+                    truncateds=np.zeros(shape=(self.num_training_envs, interact_steps_per_env),dtype=np.float32)) 
 
         if self.onpolicy:
             batch['log_probs'] = np.zeros(shape=(self.num_training_envs, interact_steps_per_env),dtype=np.float32)
@@ -90,12 +91,12 @@ class BaseAlgorithm(ABC):
                 
                 if self.random_choose_action():
                     actions = np.array([[self.training_envs.action_space.sample()] for _ in range(self.num_training_envs)],dtype=self.training_envs.action_space.dtype)
+                    
                 else:
                     with torch.no_grad():
                         actions, action_infos = self.agent.select_action(self.observations, self.train_action_deterministic)
-                
                 next_observations, rewards, terminateds, infos = self.training_envs.step(to_useful_action(self.action_space, self.action_dim, actions))
-                # self.envs_rewards+=rewards
+                
 
                 batch['states'][:,step] = self.observations
                 batch['actions'][:,step] = actions
@@ -107,6 +108,11 @@ class BaseAlgorithm(ABC):
 
                 for i in range(self.num_training_envs):
                     info = infos[i]
+                    if "truncated" in info:
+                        # If the terminated is caused by truncation instead of termination, we consider it as not done and use the last observation as the next state for training.
+                        batch['dones'][i,step] = False
+                        batch['truncateds'][i,step] = True
+                        batch['next_states'][i,step] = info['last_observation']
                     if "episode" in info:
                         self.episode_reward_buffer.append(info['episode']['r'])
                 self.observations = next_observations

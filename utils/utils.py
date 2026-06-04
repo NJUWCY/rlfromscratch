@@ -176,6 +176,9 @@ def to_useful_action(action_space:Space, action_dim:int, actions: np.ndarray):
         elif len(actions.shape)==2:
             assert action_dim==actions.shape[1], "Actions shape mismatches with the Action dimension"
             return actions
+        elif len(actions.shape)==3:
+            assert action_dim==actions.shape[2] and actions.shape[1]==1, "Actions shape mismatches with the Action dimension"
+            return actions.reshape(-1,action_dim)
         else:
             raise ValueError("actions' shape is more than 3 dims")
         

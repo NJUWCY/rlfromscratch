@@ -46,6 +46,9 @@ class SAC(OffPolicyAlgorithm):
 
     def _update_buffer(self, batch):
         self.buffer.add(batch)
+    
+    def random_choose_action(self):
+        return self.interaction_step<self.start_train_step
 
 
     def _update_policy(self):
@@ -67,7 +70,7 @@ class SAC(OffPolicyAlgorithm):
             td_error2 = target - q2
             
 
-            q_loss = 1/2*(torch.mean(td_error1**2) + torch.mean(td_error2**2))
+            q_loss = torch.mean(td_error1**2) + torch.mean(td_error2**2)
             
             # do gradient update to the agent 
             self.critic_optimizer.zero_grad()
@@ -112,6 +115,7 @@ class SAC(OffPolicyAlgorithm):
         result.add_metric("critic2/td_error_abs", torch.abs(td_error2).mean().item())
         result.add_metric("critic/q_loss", q_loss.item())
         result.add_metric("actor/loss", actor_loss.item())
+        result.add_metric("actor/entropy", -log_probs.mean().item())
         if self.learn_temp:
             result.add_metric("temp/loss", temp_loss.item())
             result.add_metric("temp/value", self.log_temp.exp().item())

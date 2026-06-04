@@ -110,7 +110,6 @@ def make_vec_envs(args: DictConfig,is_training: bool,seed: int, scale=False):
     else:
         envs = SubprocVecEnv(envs_func)
 
-    # TODO: Mujoco env can use ObsNomalization
     # env_name = args.name
     # if ENVS_NAME_TYPE[env_name]=="mujoco" and args.obs_norm: 
 

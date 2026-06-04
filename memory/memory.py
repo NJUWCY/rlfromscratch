@@ -22,15 +22,16 @@ class ReplayBuffer:
             "actions": {"shape": (self.num_envs, buffer_size, action_dim), "dtype": action_space.dtype},
             "dones": {"shape": (self.num_envs, buffer_size), "dtype": np.float32},
             "rewards": {"shape": (self.num_envs, buffer_size), "dtype": np.float32},
+            "next_states": {"shape": (self.num_envs, buffer_size, *observation_space.shape), "dtype": observation_space.dtype}
         }
         self.onpolicy = onpolicy
         if onpolicy:
             self.buffer_message['log_probs'] = {"shape": (self.num_envs, buffer_size), "dtype": np.float32}
+            self.buffer_message['truncateds'] = {"shape": (self.num_envs, buffer_size), "dtype": np.float32}
         
         self.buffer = {}
     
-        # since the replay buffer is a circular buffer, (pos+1)%self.buffer_size is the next_state, so we don't need to store next_state separately.
-        # in fact, this may introduce one transition can't be used, so the real buffer size is buffer_size-1
+        # we think the replay buffer as a big circle 
         self.pos = 0
         self.full = False 
         self.reset()
@@ -38,7 +39,7 @@ class ReplayBuffer:
 
     def add(self,batch: dict[str, np.ndarray]):
         """Add a batch of transitions to the replay buffer."""
-        # off-policy 
+        # for onpolicy algorithm, we should not allow the cover of the old data
         if self.onpolicy:
             assert not self.full
 
@@ -63,9 +64,7 @@ class ReplayBuffer:
         if end>=self.buffer_size:
             self.full = True
         self.pos = end % self.buffer_size
-        if not self.onpolicy:
-            self.buffer['states'][:,self.pos] = batch['next_states'][:,-1] # set the next state of the last transition in the batch to the current position, so that we can get the next state when sampling.
-       
+        
        
 
     def _sample_from_indices(self, batch_indices: np.ndarray) -> dict[str, np.ndarray]:
@@ -77,7 +76,7 @@ class ReplayBuffer:
         batch = {}
         for key in self.buffer:
             batch[key] = self.buffer[key][env_indices, batch_indices]
-        batch['next_states'] = self.buffer['states'][env_indices, (batch_indices + 1) % self.buffer_size]
+        
 
         return batch
 
@@ -85,7 +84,7 @@ class ReplayBuffer:
         """Get a batch of indices to sample from the replay buffer.
         You may change this method to use prioritized experience replay or other sampling strategies."""
         if self.full:
-            batch_indices = (np.random.randint(1, self.buffer_size, size=batch_size) + self.pos) % self.buffer_size
+            batch_indices = np.random.randint(0, self.buffer_size, size=batch_size)
         else:
             batch_indices = np.random.randint(0, self.pos, size=batch_size)
         
@@ -115,12 +114,10 @@ class TrajectoryRollout:
     def __init__(self, observation_space: gym.spaces.Box, 
                  action_space: gym.spaces.Space,
                  trajnum: int,
-                 max_episode_length: int,
-                 gamma: float):
+                 max_episode_length: int):
         self.trajnum = trajnum 
         self.max_episode_length = max_episode_length
         self.action_dim = get_action_dim(action_space)
-        self.gamma = gamma
 
         self.observation_space = observation_space 
         self.action_space = action_space
@@ -129,24 +126,28 @@ class TrajectoryRollout:
         self.actions = np.zeros((trajnum, max_episode_length, self.action_dim), dtype=action_space.dtype)
         self.rewards = np.zeros((trajnum, max_episode_length), dtype=np.float32)
         self.dones = np.ones((trajnum, max_episode_length), dtype=np.float32) # This is specifically designed to calculate the rewards to go 
-        self.masks = np.zeros((trajnum,max_episode_length),dtype=np.float32)
+        self.masks = np.zeros((trajnum, max_episode_length),dtype=np.float32)
         self.log_probs = np.zeros((trajnum,max_episode_length),dtype=np.float32)
+        self.last_states = np.zeros((trajnum, *observation_space.shape), dtype=observation_space.dtype) # store the last states of each trajectory for calculating the value of the last states in the GAE calculation
+        self.truncateds = np.zeros((trajnum, ), dtype=np.float32) # store the truncateds of each step for calculating the returns in the case of truncation
         self.pos = 0
         self.full = False 
     
     def add_traj(self, traj_batch: dict):
         if self.full:
             raise ValueError("Trajectory Rollout is full, you need to clear the rollout first.")
-        s, a, r, d, lp = traj_batch['states'], traj_batch['actions'], traj_batch['rewards'], traj_batch['dones'], traj_batch['log_probs']
+        s, a, r, d, lp, ls, tr = traj_batch['states'], traj_batch['actions'], traj_batch['rewards'], traj_batch['dones'], traj_batch['log_probs'], traj_batch['last_states'], traj_batch['truncateds']
         traj_length = len(s)
     
         
-        self.states[self.pos,:traj_length] = s
-        self.actions[self.pos,:traj_length] = a
-        self.rewards[self.pos,:traj_length] = r 
-        self.dones[self.pos,:traj_length] = d
-        self.log_probs[self.pos, :traj_length] = lp
-        self.masks[self.pos,:traj_length] = 1
+        self.states[self.pos,-traj_length:] = s
+        self.actions[self.pos,-traj_length:] = a
+        self.rewards[self.pos,-traj_length:] = r 
+        self.dones[self.pos, -traj_length:] = d
+        self.log_probs[self.pos, -traj_length:] = lp
+        self.masks[self.pos,-traj_length:] = 1
+        self.last_states[self.pos] = ls
+        self.truncateds[self.pos] = tr
         self.pos += 1
         if self.pos>=self.trajnum:
             self.full = True
@@ -158,13 +159,15 @@ class TrajectoryRollout:
         max_episode_length = self.max_episode_length
         observation_space = self.observation_space
         action_space = self.action_space
+
         self.states = np.zeros((trajnum, max_episode_length, *observation_space.shape), dtype=observation_space.dtype) 
         self.actions = np.zeros((trajnum, max_episode_length, self.action_dim), dtype=action_space.dtype)
         self.rewards = np.zeros((trajnum, max_episode_length), dtype=np.float32)
-        self.dones = np.ones((trajnum, max_episode_length), dtype=np.float32)
-        self.masks = np.zeros((trajnum,max_episode_length),dtype=np.float32)
+        self.dones = np.ones((trajnum, max_episode_length), dtype=np.float32) # This is specifically designed to calculate the rewards to go 
+        self.masks = np.zeros((trajnum, max_episode_length),dtype=np.float32)
         self.log_probs = np.zeros((trajnum,max_episode_length),dtype=np.float32)
-        
+        self.last_states = np.zeros((trajnum, *observation_space.shape), dtype=observation_space.dtype) # store the last states of each trajectory for calculating the value of the last states in the GAE calculation
+        self.truncateds = np.zeros((trajnum, ), dtype=np.float32) # store the truncateds of each step for calculating the returns in the case of truncation
         self.pos = 0
         self.full = False 
     

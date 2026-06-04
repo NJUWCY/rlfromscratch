@@ -13,7 +13,7 @@ backtracking_steps: 10
 cg_steps: 10
 lambda_: 0.95
 advan_norm: true
-critic_update_steps: 5
+critic_update_steps: 3
 critic_batch_size: 256
 rescale: true
 collect_traj: false

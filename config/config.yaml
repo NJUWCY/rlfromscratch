@@ -16,7 +16,7 @@ gamma: 0.99
 seed: 0
 use_wandb: false
 use_tensorboard: false 
-use_swanlab: false
+use_swanlab: true
 save_interval: 5000
 test_interval: 10
 train_log_interval: 10

@@ -8,5 +8,5 @@ python run_trpo.py \
   algorithm.collect_traj=true \
   env.name=HalfCheetah-v5 \
   env.obs_norm=false \
-  algorithm.critic_update_steps=15 \
+  algorithm.critic_update_steps=3 \
   "$@"

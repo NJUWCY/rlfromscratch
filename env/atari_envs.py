@@ -9,7 +9,7 @@ from collections import deque
 from typing import Any, SupportsFloat
 
 from stable_baselines3.common.atari_wrappers import ClipRewardEnv, EpisodicLifeEnv, MaxAndSkipEnv,FireResetEnv, NoopResetEnv, WarpFrame
-
+from .basic_envs import Monitor
 
 
 def _parse_reset_result(reset_result: tuple) -> tuple[tuple, dict, bool]:
@@ -137,29 +137,6 @@ class TransposeImage(gym.ObservationWrapper):
     def observation(self, ob):
         return ob.transpose(self.op[0], self.op[1], self.op[2])
 
-
-class Monitor(gym.Wrapper[np.ndarray, int, np.ndarray, int]):
-    def __init__(
-        self,
-        env: gym.Env
-    ):
-        super().__init__(env=env)
-        self.rewards: list[float] = []
-        
-
-    def reset(self, **kwargs) -> tuple[np.ndarray, dict]:
-        self.rewards = []
-
-        return self.env.reset(**kwargs)
-
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        observation, reward, terminated, truncated, info = self.env.step(action)
-        self.rewards.append(float(reward))
-        if terminated or truncated:
-            ep_rew = sum(self.rewards)
-            ep_info = {"r": round(ep_rew, 6)}
-            info["episode"] = ep_info
-        return observation, reward, terminated, truncated, info
 
 
 

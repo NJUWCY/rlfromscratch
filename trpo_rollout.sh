@@ -9,5 +9,5 @@ python run_trpo.py \
   env.name=Hopper-v5 \
   algorithm.buffer_name=ReplayBuffer \
   interact_per_epoch=2000 \
-  algorithm.critic_update_steps=10 \
+  algorithm.critic_update_steps=3 \
   "$@"

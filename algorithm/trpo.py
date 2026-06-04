@@ -140,37 +140,37 @@ class TRPO(OnPolicyAlgorithm):
                         fail = True
             
             # update the value function 
-            # dataset_size = states.size(0)
-            # batch_size = min(self.critic_batch_size, dataset_size)
+            dataset_size = states.size(0)
+            batch_size = min(self.critic_batch_size, dataset_size)
 
-            # for _ in range(self.critic_update_steps):
-            #     indices = torch.randperm(dataset_size, device=states.device)
-
-            #     for start in range(0, dataset_size, batch_size):
-            #         batch_idx = indices[start:start + batch_size]
-            #         batch_states = states[batch_idx]
-            #         batch_returns = returns[batch_idx]
-
-            #         values = self.agent.get_value(batch_states).squeeze(1)
-            #         value_loss = ((values - batch_returns) ** 2).mean()
-
-            #         self.optimizer.zero_grad()
-            #         value_loss.backward()
-            #         # torch.nn.utils.clip_grad_norm_(self.agent.critic.parameters(), 1.0)
-            #         self.optimizer.step()
-
-            # TODO:do the batch update or the epoch update
-            batch_size = states.shape[0]
-            critic_batch_size = min(self.critic_batch_size, batch_size)
-            value_loss = torch.tensor(0.0, device=self.device)
             for _ in range(self.critic_update_steps):
-                indices = torch.randperm(batch_size, device=self.device)[:critic_batch_size]
-                values = self.agent.get_value(states[indices]).squeeze(-1)
-                value_loss = torch.mean((values - returns[indices]) ** 2)
+                indices = torch.randperm(dataset_size, device=states.device)
 
-                self.optimizer.zero_grad()
-                value_loss.backward()
-                self.optimizer.step()
+                for start in range(0, dataset_size, batch_size):
+                    batch_idx = indices[start:start + batch_size]
+                    batch_states = states[batch_idx]
+                    batch_returns = returns[batch_idx]
+
+                    values = self.agent.get_value(batch_states).squeeze(1)
+                    value_loss = ((values - batch_returns) ** 2).mean()
+
+                    self.optimizer.zero_grad()
+                    value_loss.backward()
+                    # torch.nn.utils.clip_grad_norm_(self.agent.critic.parameters(), 1.0)
+                    self.optimizer.step()
+
+            # # TODO:do the batch update or the epoch update
+            # batch_size = states.shape[0]
+            # critic_batch_size = min(self.critic_batch_size, batch_size)
+            # value_loss = torch.tensor(0.0, device=self.device)
+            # for _ in range(self.critic_update_steps):
+            #     indices = torch.randperm(batch_size, device=self.device)[:critic_batch_size]
+            #     values = self.agent.get_value(states[indices]).squeeze(-1)
+            #     value_loss = torch.mean((values - returns[indices]) ** 2)
+
+            #     self.optimizer.zero_grad()
+            #     value_loss.backward()
+            #     self.optimizer.step()
 
 
         self.gradient_step += 1
