@@ -10,6 +10,11 @@ from torch.distributions.transforms import AffineTransform, TanhTransform
 EPS = 1e-8
 
 
+def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+    nn.init.orthogonal_(layer.weight, gain=std)
+    nn.init.constant_(layer.bias, bias_const)
+    return layer
+
 class AtariDQNNetwork(nn.Module):
     def __init__(self, input_shape:Union[tuple, list], num_actions):
         """
@@ -45,15 +50,22 @@ class AtariDQNNetwork(nn.Module):
 
 # This network is used in TRPO
 class MLPNetwork(nn.Module):
-    def __init__(self, input_dim:int, output_dim:int, hidden_sizes=[30,], activation=nn.ReLU):
+    def __init__(self, input_dim:int, output_dim:int, hidden_sizes=[30,], activation=nn.ReLU,initialization=False,initial_std=None):
         super(MLPNetwork, self).__init__()
+        assert len(hidden_sizes)+1==len(initial_std)
         layers = []
         last_dim = input_dim
-        for hidden_size in hidden_sizes:
-            layers.append(nn.Linear(last_dim, hidden_size))
+        for idx, hidden_size in enumerate(hidden_sizes):
+            if initialization:
+                layers.append(layer_init(nn.Linear(last_dim, hidden_size),std=initial_std[idx]))
+            else:
+                layers.append(nn.Linear(last_dim, hidden_size))
             layers.append(activation())
             last_dim = hidden_size
-        layers.append(nn.Linear(last_dim, output_dim))
+        if initialization:
+            layers.append(layer_init(nn.Linear(last_dim, output_dim),std=initial_std[-1]))
+        else:
+            layers.append(nn.Linear(last_dim, output_dim))
         self.net = nn.Sequential(*layers)
     
     def forward(self, x):
@@ -85,14 +97,25 @@ class GaussianActor(Actor):
     """
     use network to compute the mean and standard deviation of the Gaussian distribution
     """
-    def __init__(self, observation_space:Space, action_space:Space, net_architecture:nn.Module,device="cpu",state_dependent_std=False, clip_sigma=True, action_eps=1e-6, rescale=True, action_bound_method="tanh", **kwargs):
+    def __init__(self, observation_space:Space, 
+                 action_space:Space, 
+                 net_architecture:nn.Module,
+                 device="cpu",
+                 state_dependent_std=False, 
+                 clip_sigma=True, 
+                 action_eps=1e-6, 
+                 rescale=True, 
+                 action_bound_method="tanh",
+                 hidden_sizes=[64, 64], 
+                 activation=torch.nn.Tanh, 
+                 initialization=False):
         super(GaussianActor, self).__init__(observation_space, action_space)
 
-        self.mu = net_architecture(observation_space.shape[0], action_space.shape[0], **kwargs)
+        self.mu = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialization, np.array([np.sqrt(2),np.sqrt(2),0.01]))
         # you can use network to compute the log_sigma according to the state
         self.state_dependent_std = state_dependent_std
         if state_dependent_std:
-            self.log_sigma = net_architecture(observation_space.shape[0], action_space.shape[0], **kwargs)
+            self.log_sigma = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialization,np.array([np.sqrt(2),np.sqrt(2),0.01]))
         else:
             self.log_sigma =  nn.Parameter(torch.zeros(size=(1,action_space.shape[0]))) 
         self.clip_sigma = clip_sigma
@@ -112,7 +135,7 @@ class GaussianActor(Actor):
         else:
             log_sigma = self.log_sigma
         if self.clip_sigma:
-            log_sigma = log_sigma.clamp(min=-5, max=2)
+            log_sigma = log_sigma.clamp(min=-10, max=2)
         sigma = torch.exp(log_sigma)
         if not self.state_dependent_std:
             sigma = sigma.expand_as(mu)
@@ -145,7 +168,7 @@ class GaussianActor(Actor):
         else:
             actions = dist.sample()
         
-        # clamp the action to avoid the log_prob=nan
+        # clamp the action within action range and avoid the log_prob=nan
         actions = self._action_clamp(actions)
         log_probs = dist.log_prob(actions)
         return actions.detach().cpu().numpy(), {"log_probs":log_probs.detach().cpu().numpy()}
@@ -192,10 +215,15 @@ class Critic(nn.Module):
 
 
 class ValueFunction(Critic):
-    def __init__(self, observation_space:Space, net_architecture:nn.Module, **kwargs):
+    def __init__(self, 
+                 observation_space:Space, 
+                 net_architecture:nn.Module,
+                 hidden_sizes=[64, 64], 
+                 activation=torch.nn.Tanh, 
+                 initialization=False):
         super(ValueFunction, self).__init__(observation_space)
 
-        self.net = net_architecture(observation_space.shape[0],1, **kwargs)
+        self.net = net_architecture(observation_space.shape[0],1, hidden_sizes,activation,initialization, np.array([np.sqrt(2),np.sqrt(2),1]))
     
     def forward(self,states:torch.Tensor):
         return self.net(states)

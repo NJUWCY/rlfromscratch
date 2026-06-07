@@ -13,6 +13,7 @@ from agent.agent import AgentBase, AtariDQNAgent
 from utils.result import Result
 from utils.utils import to_useful_action
 from .basealgorithm import BaseAlgorithm
+from utils.utils import RunningMeanStd
 
 
 class OnPolicyAlgorithm(BaseAlgorithm, ABC):
@@ -33,6 +34,9 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
             self.last_states = np.zeros((self.num_training_envs, *self.observation_space.shape), dtype=self.observation_space.dtype)
         self.gae = args.algorithm.gae
         self.lambda_ = args.algorithm.lambda_
+        self.ret_rms = RunningMeanStd()
+        self.return_scaling = args.algorithm.return_scaling
+        self._eps = 1e-8
            
             
     
@@ -97,7 +101,10 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
                             truncated = False
                             if "truncated" in info:
                                 traj_dones[i][-1] = False 
-                                traj_last_observations = info['last_observation']
+                                if self.args.env.obs_norm:
+                                    traj_last_observations = self.training_envs._norm_obs(info['last_observation'])
+                                else:
+                                    traj_last_observations = info['last_observation']
                                 truncated = True
 
                             self.episode_reward_buffer.append(info['episode']['r'])
@@ -139,18 +146,7 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
         else:
             return super().interact_with_envs()
     
-    def compute_advantages_from_traj(self)->Tuple[np.ndarray,np.ndarray]:
-        states = self.traj_rollout.states
-        rewards = self.traj_rollout.rewards 
-        dones = self.traj_rollout.dones 
-        last_states = self.traj_rollout.last_states
-        truncateds = self.traj_rollout.truncateds
-        
-
-        with torch.no_grad():
-            values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((self.trajnum, self.max_episode_length)).cpu().numpy()
-            last_values = self.agent.get_value(last_states).squeeze(1).cpu().numpy()
-        
+    def _compute_unnormalized_advantages_trajectory(self, rewards, dones, values, last_values):
         delta = np.zeros((self.trajnum,),dtype=np.float32)
         last_advans = np.zeros((self.trajnum,),dtype=np.float32)
         last_values = (1-dones[:,-1])*last_values + np.zeros((self.trajnum,),dtype=np.float32)
@@ -171,6 +167,53 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
             return returns, advantages
         else:
             return returns, returns - values
+    
+    def compute_advantages_from_traj(self)->Tuple[np.ndarray,np.ndarray]:
+        states = self.traj_rollout.states
+        rewards = self.traj_rollout.rewards 
+        dones = self.traj_rollout.dones 
+        last_states = self.traj_rollout.last_states
+        
+
+        with torch.no_grad():
+            values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((self.trajnum, self.max_episode_length)).cpu().numpy()
+            last_values = self.agent.get_value(last_states).squeeze(1).cpu().numpy()
+        
+        values_to_cal = values * np.sqrt(self.ret_rms.var + self._eps) if self.return_scaling else values 
+        last_values_to_cal = last_values * np.sqrt(self.ret_rms.var + self._eps) if self.return_scaling else last_values 
+
+        unnormalized_returns, advantages = self._compute_unnormalized_advantages_trajectory(rewards, dones, values_to_cal, last_values_to_cal)
+        
+        if self.return_scaling:
+            returns = unnormalized_returns / np.sqrt(self.ret_rms.var + self._eps)
+            self.ret_rms.update(unnormalized_returns.flatten())
+        else:
+            returns = unnormalized_returns
+        return returns, advantages, values
+        
+    
+    def _compute_unnormalized_advantages_rollout(self, rewards, dones, truncateds, values, next_values):
+        num_envs, rollout_length = rewards.shape[0], rewards.shape[1]
+        advantages = np.zeros((num_envs,rollout_length),dtype=np.float32)
+        returns = np.zeros((num_envs,rollout_length),dtype=np.float32)
+        if self.gae:
+            deltas = rewards + self.gamma*(1-dones)*next_values - values
+            last_advan = np.zeros((num_envs,),dtype=np.float32)
+            advan_mask = np.logical_or(dones, truncateds)
+
+            for i in range(rollout_length-1,-1,-1):
+                advantages[:,i] = deltas[:, i] + self.gamma*self.lambda_*(1-advan_mask[:, i])*last_advan
+                last_advan = advantages[:,i]
+            returns = advantages + values
+        
+        else:
+            last_returns = next_values[:,-1]
+            for i in range(rollout_length-1,-1,-1):
+                returns[:,i] = rewards[:,i] + self.gamma*(1-dones[:,i])*((1-truncateds[:,i])*last_returns+truncateds[:,i]*next_values[:,i])
+                last_returns = returns[:,i]
+            advantages = returns - values 
+        return returns, advantages
+
 
     def compute_advantages_from_rollout(self)->Tuple[np.ndarray,np.ndarray]:
         states = self.buffer.buffer['states']
@@ -184,26 +227,24 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
         with torch.no_grad():
             values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((num_envs, rollout_length)).cpu().numpy()
             next_values = self.agent.get_value(next_states.reshape((-1,next_states.shape[-1]))).squeeze(1).reshape((num_envs, rollout_length)).cpu().numpy()
+ 
+
+        value_to_cal = values * np.sqrt(self.ret_rms.var + self._eps) if self.return_scaling else values
+        next_value_to_cal = next_values * np.sqrt(self.ret_rms.var + self._eps) if self.return_scaling else next_values
+        unnormalized_returns, advantages = self._compute_unnormalized_advantages_rollout(rewards, 
+                                                                                 dones, 
+                                                                                 truncateds,
+                                                                                 value_to_cal,
+                                                                                 next_value_to_cal)
         
 
-        advantages = np.zeros((num_envs,rollout_length),dtype=np.float32)
-        returns = np.zeros((num_envs,rollout_length),dtype=np.float32)
-        if self.gae:
-            last_advan = np.zeros((num_envs,),dtype=np.float32)
-
-            for i in range(rollout_length-1,-1,-1):
-                delta = rewards[:,i] + self.gamma*(1-dones[:,i])*next_values[:,i] - values[:,i]
-                advantages[:,i] = delta + self.gamma*self.lambda_*(1-dones[:,i])*(1-truncateds[:,i])*last_advan
-                last_advan = advantages[:,i]
-            returns = advantages + values
-            return returns, advantages
-        
+        if self.return_scaling:
+            returns = unnormalized_returns / np.sqrt(self.ret_rms.var + self._eps)
+            self.ret_rms.update(unnormalized_returns.flatten())
         else:
-            last_returns = next_values[:,-1]
-            for i in range(rollout_length-1,-1,-1):
-                returns[:,i] = rewards[:,i] + self.gamma*(1-dones[:,i])*((1-truncateds[:,i])*last_returns+truncateds[:,i]*next_values[:,i])
-                last_returns = returns[:,i]
-            return returns, returns - values
+            returns = unnormalized_returns
+        return returns, advantages, values
+
 
 
 

@@ -10,6 +10,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch 
 from datetime import datetime 
+import numpy as np
 
 from env.make_envs import make_vec_envs
 from algorithm import TRPO, OnPolicyAlgorithm, ALGORITHM_DICT, PPO
@@ -54,11 +55,17 @@ def main(cfg: DictConfig):
         MLPNetwork, 
         device=device,
         rescale=args.algorithm.rescale,
-        action_bound_method="tanh",
+        action_bound_method=args.algorithm.action_bound_method,
         hidden_sizes=args.algorithm.hidden_sizes, 
-        activation=torch.nn.Tanh)
+        activation=torch.nn.Tanh,
+        initialization=True
+        )
 
-    critic = ValueFunction(training_envs.observation_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=torch.nn.Tanh)
+    critic = ValueFunction(training_envs.observation_space, 
+                           MLPNetwork, 
+                           hidden_sizes=args.algorithm.hidden_sizes, 
+                           activation=torch.nn.Tanh,
+                           initialization=True)
 
     agent = A2CAgent(training_envs.observation_space, training_envs.action_space, device, actor, critic)
     

@@ -112,7 +112,10 @@ class BaseAlgorithm(ABC):
                         # If the terminated is caused by truncation instead of termination, we consider it as not done and use the last observation as the next state for training.
                         batch['dones'][i,step] = False
                         batch['truncateds'][i,step] = True
-                        batch['next_states'][i,step] = info['last_observation']
+                        if self.args.env.obs_norm:
+                            batch['next_states'][i, step] = self.training_envs._norm_obs(info['last_observation'])
+                        else:
+                            batch['next_states'][i,step] = info['last_observation']
                     if "episode" in info:
                         self.episode_reward_buffer.append(info['episode']['r'])
                 self.observations = next_observations

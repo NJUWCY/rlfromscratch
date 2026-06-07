@@ -4,7 +4,7 @@ python run_trpo.py \
   save_interval=1000 \
   test_interval=50 \
   train_action_deterministic=false \
-  algorithm.rescale=true \
+  algorithm.rescale=false \
   algorithm.collect_traj=true \
   env.name=HalfCheetah-v5 \
   env.obs_norm=false \

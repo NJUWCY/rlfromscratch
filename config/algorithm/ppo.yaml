@@ -8,7 +8,7 @@ optimizer: Adam
 hidden_sizes: [64, 64]
 lambda_: 0.95
 advan_norm: true
-rescale: true
+rescale: false
 collect_traj: false
 gae: true
 eps_clip: 0.2
@@ -20,3 +20,8 @@ minibatch_size: 64
 use_grad_clip: true
 max_grad_norm: 0.5
 state_dependent_std: false
+use_value_clip: true
+value_clip: 0.2
+action_bound_method: tanh
+log_clip_stabilize: true
+return_scaling: true

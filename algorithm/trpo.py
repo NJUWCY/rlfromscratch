@@ -46,7 +46,7 @@ class TRPO(OnPolicyAlgorithm):
             # get transitions
             if self.collect_traj:
                 states, actions, masks, old_log_probs = self.traj_rollout.states, self.traj_rollout.actions, self.traj_rollout.masks, self.traj_rollout.log_probs
-                returns, advantages = self.compute_advantages_from_traj()
+                returns, advantages, old_values = self.compute_advantages_from_traj()
             
                 states = states.reshape((-1,*self.observation_space.shape))
                 actions = actions.reshape((-1,actions.shape[-1]))
@@ -65,7 +65,7 @@ class TRPO(OnPolicyAlgorithm):
             else:
                 states, actions, old_log_probs = self.buffer.buffer['states'], self.buffer.buffer['actions'], self.buffer.buffer['log_probs']
 
-                returns, advantages = self.compute_advantages_from_rollout()
+                returns, advantages, old_values = self.compute_advantages_from_rollout()
                 states = states.reshape((-1,*self.observation_space.shape))
                 actions = actions.reshape((-1,actions.shape[-1]))
                 old_log_probs = old_log_probs.reshape((-1))

@@ -4,10 +4,10 @@ python run_trpo.py \
   save_interval=1000 \
   test_interval=50 \
   train_action_deterministic=false \
-  algorithm.rescale=true \
+  algorithm.rescale=false \
   algorithm.collect_traj=false \
   env.name=Hopper-v5 \
   algorithm.buffer_name=ReplayBuffer \
-  interact_per_epoch=2000 \
+  interact_per_epoch=256 \
   algorithm.critic_update_steps=3 \
   "$@"

@@ -2,7 +2,7 @@ name: TRPO
 onpolicy: true
 buffer_name: TrajectoryRollout
 trajnum: 10
-learning_rate: 1e-3
+learning_rate: 3e-4
 gamma: 0.99
 optimizer: Adam
 batch_size: 32
@@ -15,8 +15,9 @@ lambda_: 0.95
 advan_norm: true
 critic_update_steps: 3
 critic_batch_size: 256
-rescale: true
+rescale: false
 collect_traj: false
 eigenvalue_reg: 0.1
 gae: true
 state_dependent_std: false
+return_scaling: false 
