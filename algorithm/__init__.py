@@ -9,6 +9,7 @@ from .trpo import TRPO
 from .ppo import PPO
 from .sac import SAC
 from .bc import BehaviorCloning
+from .td3 import TD3
 
 
 ALGORITHM_DICT = {
@@ -17,4 +18,5 @@ ALGORITHM_DICT = {
     "PPO": PPO,
     "SAC": SAC,
     "BC": BehaviorCloning,
+    "TD3": TD3
 }

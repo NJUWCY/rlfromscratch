@@ -8,7 +8,7 @@ from gymnasium.spaces import Space
 from typing import Union, Tuple, Optional, Dict
 
 
-from utils.networks import AtariDQNNetwork, MLPNetwork, Actor, Critic
+from utils.networks import AtariDQNNetwork, MLPNetwork, Actor, Critic, DeterministicActor, GaussianActor, DoubleQFunction
 from utils.utils import atari_state_preprocess_function
 
 
@@ -155,8 +155,6 @@ class A2CAgent(AgentBase):
         self.critic = critic
     
 
-    
-
     def dist(self,states):
         assert len(states.shape)<=2
         states = to_correct_device_tensor(states, self.device)
@@ -230,6 +228,126 @@ class PolicyAgent(AgentBase):
         states = to_correct_device_tensor(states, self.device)
         actions = to_correct_device_tensor(actions, self.device)
         return self.actor.get_log_prob(states, actions)
+
+class TD3Agent(A2CAgent):
+    _config_attrs = A2CAgent._config_attrs + (
+        "use_target",
+        "target_update_method",
+        "target_update_tau",
+        "double_critic",
+    )
+    """
+    TD3 Agent uses target network for actor and critic. 
+    """
+    def __init__(self, 
+        observation_space: Space, 
+        action_space: Space, 
+        device:torch.device, 
+        actor:DeterministicActor, 
+        critic:DoubleQFunction, 
+        target_actor:nn.Module=None,
+        target_critic:nn.Module=None, 
+        use_target:bool=False,
+        target_update_method="soft",
+        target_update_tau=0.005,
+        double_critic=True,
+        noise_sigma=0.2,
+        noise_clip=0.5
+    ):
+        super(TD3Agent, self).__init__(observation_space, action_space, device, actor, critic)
+        
+        self.actor = actor
+        self.critic = critic
+        self.target_actor = target_actor
+        self.target_critic = target_critic
+        self.use_target = use_target
+        self.target_update_method = target_update_method
+        self.target_update_tau = target_update_tau
+        if self.use_target:
+            self._target_hard_update()
+        self.double_critic = double_critic
+
+        self.noise_sigma = noise_sigma 
+        self.noise_clip = noise_clip
+
+    def _target_hard_update(self):
+        self.target_critic.load_state_dict(self.critic.state_dict())
+        self.target_actor.load_state_dict(self.actor.state_dict())
+    
+    def _target_soft_update(self):
+        for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
+            target_param.data.copy_(
+                self.target_update_tau * param.data + (1 - self.target_update_tau) * target_param.data
+            )
+        
+        for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
+            target_param.data.copy_(
+                self.target_update_tau * param.data + (1 - self.target_update_tau) * target_param.data
+            )
+    def update_target(self):
+        if self.target_update_method == "soft":
+            self._target_soft_update()
+        else:
+            self._target_hard_update()
+    
+    def select_action(self, states:Union[np.ndarray, torch.Tensor], deterministic=False)->Tuple[np.ndarray, Dict]:
+        """
+        select_action 的 Docstring
+        :param states: (batch, state_dim)
+        :return: actions: (batch, action_dim)
+        """
+        assert len(states.shape)<=2
+        states = to_correct_device_tensor(states, self.device)
+        return self.actor.get_action(states, deterministic)
+
+    def select_action_from_target(self, states:Union[np.ndarray, torch.Tensor])->np.ndarray:
+        assert len(states.shape)<=2
+        states = to_correct_device_tensor(states, self.device)
+        actions = self.target_actor.forward(states)
+        # TODO: in other environments, maybe the noise shouldn't multiply scale
+        noise = (torch.randn_like(actions) * self.noise_sigma).clamp(-self.noise_clip, self.noise_clip)
+        actions = self.target_actor.scale*(torch.tanh(actions)+noise) + self.target_actor.loc 
+        actions = torch.clamp(actions, min=self.target_actor.low,max=self.target_actor.high)
+        return actions.detach().cpu().numpy()
+
+    def get_action(self, states):
+        states = to_correct_device_tensor(states, self.device)
+        actions = self.actor.scale * torch.tanh(self.actor.forward(states)) + self.actor.loc
+        return actions 
+
+
+    def get_q_function(self,states:np.ndarray,actions:np.ndarray,target=False):
+        """
+        states: np.ndarray:(batch, state_dim)
+        actions: np.ndarray:(batch, action_dim)
+        output: (batch,1) 
+        """
+        states, actions = to_correct_device_tensor(states, self.device), to_correct_device_tensor(actions, self.device)
+        if self.double_critic:
+            if target:
+                critic1,critic2 = self.target_critic(states,actions)
+            else:
+                critic1, critic2 = self.critic(states, actions)
+            critic = torch.min(critic1, critic2)
+            return critic
+            
+        else:
+            if target:
+                return self.target_critic(states,actions)
+            else:
+                return self.critic(states, actions)
+    
+    def get_double_q_function(self,states:np.ndarray,actions:np.ndarray):
+        """
+        states: np.ndarray:(batch, state_dim)
+        actions: np.ndarray:(batch, action_dim)
+        output: (2,batch,1)
+        """
+        assert self.double_critic
+        states, actions = to_correct_device_tensor(states, self.device), to_correct_device_tensor(actions, self.device)
+        critic1, critic2 = self.critic(states, actions)
+        return critic1, critic2
+
 
 
 class SACAgent(A2CAgent):

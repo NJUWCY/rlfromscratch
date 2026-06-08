@@ -52,7 +52,8 @@ class AtariDQNNetwork(nn.Module):
 class MLPNetwork(nn.Module):
     def __init__(self, input_dim:int, output_dim:int, hidden_sizes=[30,], activation=nn.ReLU,initialization=False,initial_std=None):
         super(MLPNetwork, self).__init__()
-        assert len(hidden_sizes)+1==len(initial_std)
+        if initial_std is not None:
+            assert len(hidden_sizes)+1==len(initial_std)
         layers = []
         last_dim = input_dim
         for idx, hidden_size in enumerate(hidden_sizes):
@@ -73,7 +74,7 @@ class MLPNetwork(nn.Module):
         return self.net(x)
     
 
-class Actor(nn.Module): # This is designed in TRPO, in other algorithm there are more to implement
+class Actor(nn.Module): # This is designed for TRPO, in other algorithm there are more or less to implement
     def __init__(self, observation_space:Space, action_space:Space):
         super(Actor, self).__init__()
         self.observation_space = observation_space
@@ -204,6 +205,69 @@ class GaussianActor(Actor):
         return log_probs
 
 
+class DeterministicActor(Actor):
+    def __init__(self, 
+                 observation_space:Space, 
+                 action_space:Space,
+                 net_architecture:nn.Module,
+                 device="cpu",
+                 rescale=True,
+                 action_bound_method="tanh",
+
+                 add_noise="normal",
+                 explore_noise_sigma=0.1,
+
+                 hidden_sizes=[64, 64], 
+                 activation=torch.nn.ReLU, 
+                 initialization=False):
+        super(DeterministicActor, self).__init__(observation_space, action_space)
+        
+        self.net = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialization, np.array([np.sqrt(2),np.sqrt(2),0.01]))
+ 
+        self.device = device
+
+        self.add_noise = add_noise
+        self.explore_noise_sigma = explore_noise_sigma
+
+        self.low, self.high = torch.tensor(self.action_space.low,device=self.device), torch.tensor(self.action_space.high, device=self.device)
+        self.loc, self.scale = (self.low+self.high)/2, (self.high-self.low)/2
+        self.rescale = rescale
+        self.action_bound_method = action_bound_method
+
+
+
+    
+    def forward(self, x:torch.Tensor):
+        return self.net(x)
+
+
+    def get_action(self,states:np.ndarray,deterministic:bool):
+        # return: (actions, action_info)
+        actions = self.forward(states)
+        if not deterministic:
+            if self.add_noise=="normal":
+                noise = torch.randn_like(actions) * self.explore_noise_sigma
+            else:
+                raise NotImplementedError
+            
+            if self.rescale:
+                if self.action_bound_method=="tanh":
+                    actions = self.scale*(torch.tanh(actions) + noise) + self.loc
+                else:
+                    raise NotImplementedError
+            else:
+                actions = actions + noise 
+        else:
+            if self.rescale:
+                actions = self.scale*torch.tanh(actions) + self.loc
+
+        actions = torch.clamp(actions, min=self.low,max=self.high)
+        return actions.detach().cpu().numpy(), None 
+
+
+
+        
+
 class Critic(nn.Module):
     def __init__(self,observation_space:Space, action_space:Space=None):
         super(Critic, self).__init__()
@@ -244,7 +308,7 @@ class QFunction(Critic):
         inputs = torch.concat([states, actions], dim=1)
         return self.net(inputs)
 
-class DoubleQFunction(QFunction):
+class DoubleQFunction(Critic):
     def __init__(self, observation_space:Space, action_space:Space, net_architecture:nn.Module, **kwargs):
         super(DoubleQFunction, self).__init__(observation_space, action_space, net_architecture, **kwargs)
 
