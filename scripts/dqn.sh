@@ -6,6 +6,7 @@ python run_dqn.py \
   env.num_training_envs=1 \
   save_interval=100000 \
   test_interval=10000 \
-  train_log_interval=50000 \
-  total_epoch=5000000 \
-  # algorithm.buffer_size=500000
+  train_log_interval=10000 \
+  total_epoch=1000000 \
+  algorithm.learning_rate=1e-4 \
+  algorithm.buffer_size=500000

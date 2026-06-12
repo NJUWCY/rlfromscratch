@@ -17,7 +17,7 @@ from utils.utils import get_best_device, set_seed
 from logger.logger import Logger 
 from memory import BUFFER_DICT,ReplayBuffer, TrajectoryRollout
 from agent import A2CAgent, SACAgent
-from utils.networks import GaussianActor, QFunction, MLPNetwork, DoubleQFunction
+from utils.networks import QFunction, MLPNetwork, DoubleQFunction, DiagGaussianActor, TanhGaussianActor
 from utils import ACTIVATION_DICT
 
 def get_args(cfg: DictConfig):
@@ -31,7 +31,7 @@ def main(cfg: DictConfig):
     args = get_args(cfg)
     set_seed(args.seed)
     
-    training_envs = make_vec_envs(args.env,True,scale=False,seed=args.seed) # , make_vec_envs(args.env,False,scale=False)
+    training_envs = make_vec_envs(args.env,True,seed=args.seed) # , make_vec_envs(args.env,False,scale=False)
     
     logging.info("Checking for available GPUs...")
     device = get_best_device()
@@ -48,17 +48,29 @@ def main(cfg: DictConfig):
     logging.info("Creating the Agent...")
 
     activation = ACTIVATION_DICT[args.algorithm.activation]
-    actor = GaussianActor(
-        training_envs.observation_space, 
-        training_envs.action_space, 
-        net_architecture=MLPNetwork, 
-        state_dependent_std=args.algorithm.state_dependent_std,
-        device=device,
-        rescale=args.algorithm.rescale,
-        action_bound_method="tanh",
-        hidden_sizes=args.algorithm.hidden_sizes, 
-        activation=activation
+    if not args.algorithm.rescale:
+        actor = DiagGaussianActor(
+            training_envs.observation_space, 
+            training_envs.action_space, 
+            MLPNetwork, 
+            device=device,
+            state_dependent_std=args.algorithm.state_dependent_std,
+            hidden_sizes=args.algorithm.hidden_sizes, 
+            activation=torch.nn.Tanh
         )
+    else:
+        if args.algorithm.action_bound_method == "tanh":
+            actor = TanhGaussianActor(
+                training_envs.observation_space, 
+                training_envs.action_space, 
+                MLPNetwork, 
+                device=device,
+                state_dependent_std=args.algorithm.state_dependent_std,
+                hidden_sizes=args.algorithm.hidden_sizes, 
+                activation=torch.nn.Tanh
+            )
+        else:
+            raise ValueError(f"Action bound method {args.algorithm.action_bound_method} not supported")
 
     double_critic = args.algorithm.double_critic
     target_critic = None

@@ -7,14 +7,14 @@ import numpy as np
 from utils.result import Result
 from utils import OPTIMIZER_DICT
 from memory.memory import ReplayBuffer, TrajectoryRollout
-from agent.agent import AgentBase
+from agent.agent import AgentBase, ProbabilityA2CAgent, DeterminiticA2CAgent
 from logger.logger import Logger
 from .baseonpolicy import OnPolicyAlgorithm
 from utils.utils import RunningMeanStd
 
 
 class PPO(OnPolicyAlgorithm):
-    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: AgentBase, logger: Logger, device, save_pth: str, best_pth:str, args):
+    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: ProbabilityA2CAgent, logger: Logger, device, save_pth: str, best_pth:str, args):
         super(PPO,self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth, best_pth, args)
 
         algo_args = args.algorithm
@@ -24,12 +24,27 @@ class PPO(OnPolicyAlgorithm):
         self.entropy_coef = algo_args.entropy_coef
         self.actor_lr = algo_args.actor_lr
         self.critic_lr = algo_args.critic_lr 
-        self.optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.optimizer](
-            [
-                {"params": self.agent.actor.parameters(), "lr": self.actor_lr},
-                {"params": self.agent.critic.parameters(), "lr": self.critic_lr}
+        if algo_args.common_head:
+            self.optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.optimizer](
+            [   {"params": self.agent.actor.encoder.parameters(), "lr": algo_args.encoder_lr},
+                {"params": self.agent.actor.fc.parameters(), "lr": self.actor_lr},
+                {"params": self.agent.critic.fc.parameters(), "lr": self.critic_lr}
                 ]
             )
+        else:
+            self.optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.optimizer](
+                [
+                    {"params": self.agent.actor.parameters(), "lr": self.actor_lr},
+                    {"params": self.agent.critic.parameters(), "lr": self.critic_lr}
+                    ]
+                )
+        self.lr_decay = algo_args.lr_decay
+        if self.lr_decay:
+            self.scheduler = torch.optim.lr_scheduler.LambdaLR(
+                self.optimizer,
+                lr_lambda=lambda step: max(1.0 - step / self.total_update_steps, 0.0)
+            )
+
         self.update_epochs = algo_args.update_epochs
         self.minibatch_size = algo_args.minibatch_size
         self.advan_norm = algo_args.advan_norm
@@ -53,16 +68,24 @@ class PPO(OnPolicyAlgorithm):
         else:
             raise TypeError("input must be np array or torch tensor")
 
-    def _update_with_minibatch(self,states, actions, old_log_probs, advantages, returns, old_values):
+    def _update_with_minibatch(self,states: torch.Tensor, actions: torch.Tensor, old_log_probs: torch.Tensor, advantages: torch.Tensor, returns: torch.Tensor, old_values: torch.Tensor):
+        """
+        states: torch.Tensor:(batch, state_dim)
+        actions: torch.Tensor:(batch, action_dim)
+        old_log_probs: torch.Tensor:(batch,)
+        advantages: torch.Tensor:(batch,)
+        returns: torch.Tensor:(batch,)
+        old_values: torch.Tensor:(batch,)
+        """
         result_dict = {}
 
-        log_prob = self.agent.log_prob(states,actions)
+        log_probs = self.agent.log_prob(states,actions)
 
         if self.log_clip_stabilize:
             # the max clamp here is to avoid inf in ratios and advantages, which will cause the nan in gradient
-            ratios = (torch.clamp(log_prob - old_log_probs,max=30)).exp()
+            ratios = (torch.clamp(log_probs - old_log_probs,max=50)).exp()
         else:
-            ratios = (log_prob - old_log_probs).exp()
+            ratios = (log_probs - old_log_probs).exp()
 
         surr1 = ratios*advantages  
         surr2 = torch.clamp(ratios, 1.0 - self.eps_clip, 1.0 + self.eps_clip)*advantages
@@ -84,8 +107,8 @@ class PPO(OnPolicyAlgorithm):
         
         total_loss = actor_loss + self.value_coef*critic_loss 
         if self.use_entropy_loss:
-            # since the tanh transformation makes the entropy calculation have no closed form, we use the base_dist as the entropy
-            entropy = self.agent.dist(states).base_dist.entropy().mean()
+            entropy = self.agent.get_entropy(states)
+
             total_loss -= self.entropy_coef*entropy
             result_dict['actor/entropy'] = entropy.item()
         self.optimizer.zero_grad()
@@ -119,8 +142,8 @@ class PPO(OnPolicyAlgorithm):
                 states, actions, masks, old_log_probs = self.traj_rollout.states, self.traj_rollout.actions, self.traj_rollout.masks, self.traj_rollout.log_probs
                 returns, advantages, old_values = self.compute_advantages_from_traj()
             
-                states = states.reshape((-1,states.shape[-1]))
-                actions = actions.reshape((-1,actions.shape[-1]))
+                states = states.reshape((-1,*states.shape[2:]))
+                actions = actions.reshape((-1,*actions.shape[2:]))
                 masks = masks.reshape((-1))
                 old_log_probs = old_log_probs.reshape((-1))
                 advantages = advantages.reshape((-1))
@@ -139,8 +162,8 @@ class PPO(OnPolicyAlgorithm):
                 states, actions, old_log_probs = self.buffer.buffer['states'], self.buffer.buffer['actions'], self.buffer.buffer['log_probs']
 
                 returns, advantages, old_values = self.compute_advantages_from_rollout()
-                states = states.reshape((-1,states.shape[-1]))
-                actions = actions.reshape((-1,actions.shape[-1]))
+                states = states.reshape((-1,*states.shape[2:]))
+                actions = actions.reshape((-1,*actions.shape[2:]))
                 old_log_probs = old_log_probs.reshape((-1))
                 advantages = advantages.reshape((-1))
                 returns = returns.reshape((-1))
@@ -173,7 +196,10 @@ class PPO(OnPolicyAlgorithm):
                     batch_returns = returns[idx]
                     batch_old_values = old_values[idx]
                     result_dict = self._update_with_minibatch(batch_states, batch_actions,batch_old_log_probs, batch_advantages, batch_returns, batch_old_values)
-                    
+            
+
+            if self.lr_decay:
+                self.scheduler.step()
 
 
         for k,v in result_dict.items():
@@ -185,4 +211,7 @@ class PPO(OnPolicyAlgorithm):
             result.add_metric("actor/adv_mean", advantages.mean().item())
             result.add_metric("actor/adv_max", torch.max(advantages).item())
         
+
+        self.gradient_step += 1
+
         return result

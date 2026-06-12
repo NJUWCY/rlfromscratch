@@ -30,7 +30,8 @@ class OffPolicyAlgorithm(BaseAlgorithm, ABC):
         
         result.add_metric("buffer_size",self.buffer.buffer_size)
         if start_train:
-            update_policy_log = self._update_policy()
+            for _ in range(self.update_step_per_epoch):
+                update_policy_log = self._update_policy()
             result.add(update_policy_log)
             return result
         return result

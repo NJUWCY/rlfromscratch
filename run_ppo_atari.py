@@ -10,14 +10,15 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 import torch 
 from datetime import datetime 
+import numpy as np
 
 from env.make_envs import make_vec_envs
-from algorithm import OffPolicyAlgorithm, DQN, ALGORITHM_DICT
+from algorithm import TRPO, OnPolicyAlgorithm, ALGORITHM_DICT, PPO
 from utils.utils import get_best_device, set_seed
 from logger.logger import Logger 
-from memory import ReplayBuffer
-from agent.agent import AtariDQNAgent
-from utils.networks import AtariDQNNetwork
+from memory import BUFFER_DICT,ReplayBuffer, TrajectoryRollout
+from agent import ProbabilityA2CAgent
+from utils.networks import DiagGaussianActor, TanhGaussianActor, ValueFunction, MLPNetwork, AtariCNNEncoder, DiscreteProbabilityActor, DiscreteVFunction
 
 
 def get_args(cfg: DictConfig):
@@ -31,6 +32,7 @@ def main(cfg: DictConfig):
     args = get_args(cfg)
     set_seed(args.seed)
     
+    # Attention: here we set the scale=True in PPO training.
     training_envs = make_vec_envs(args.env,True,seed=args.seed) # , make_vec_envs(args.env,False,scale=False)
     
     logging.info("Checking for available GPUs...")
@@ -42,31 +44,40 @@ def main(cfg: DictConfig):
     logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args.algorithm, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
 
     logging.info("Creating the ReplayBuffer...")
-    assert args.algorithm.buffer_name=="ReplayBuffer"
-    buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.algorithm.buffer_size//training_envs.num_envs, training_envs.num_envs)
+    if args.algorithm.buffer_name=="TrajectoryRollout":
+        buffer = TrajectoryRollout(training_envs.observation_space,training_envs.action_space, args.algorithm.trajnum, args.env.max_episode_length)
+    else:
+        buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.interact_per_epoch, training_envs.num_envs,onpolicy=args.algorithm.onpolicy)
 
     logging.info("Creating the Agent...")
-    network = AtariDQNNetwork(training_envs.observation_space.shape, training_envs.action_space.n)
-    if args.algorithm.use_target:
-        target_network = AtariDQNNetwork(training_envs.observation_space.shape, training_envs.action_space.n)
-        agent = AtariDQNAgent(training_envs.observation_space, 
-                              training_envs.action_space, 
-                              device, 
-                              network=network,
-                              use_target=True,
-                              target_network=target_network, 
-                              target_update_tau=args.algorithm.target_update_tau,
-                              target_update_method=args.algorithm.target_update_method)
-    else:
-        agent = AtariDQNAgent(training_envs.observation_space,
-                            training_envs.action_space, 
-                            device, 
-                            network=network)
-    
     
 
+    embedding_dim = 512 
+    encoder = AtariCNNEncoder(
+        training_envs.observation_space.shape, 
+        embedding_dim, 
+        initialize=args.algorithm.initialize)
+
+    actor = DiscreteProbabilityActor(
+        training_envs.observation_space, 
+        training_envs.action_space, 
+        encoder,
+        initialize=args.algorithm.initialize)
+    
+    critic = DiscreteVFunction(
+        training_envs.observation_space, 
+        training_envs.action_space, 
+        encoder,
+        initialize=args.algorithm.initialize
+    )
+    
+    # TODO: actor and critic share the encoder, which may cause repetition in agent.state_dict()
+    agent = ProbabilityA2CAgent(training_envs.observation_space, training_envs.action_space, device, actor, critic)
+    
+        
+
     # create trainer 
-    algorithm: OffPolicyAlgorithm | DQN
+    algorithm: OnPolicyAlgorithm | PPO
     
     algorithm = ALGORITHM_DICT[args.algorithm.name](training_envs=training_envs, testing_envs=None, 
                                                buffer=buffer, agent=agent, 

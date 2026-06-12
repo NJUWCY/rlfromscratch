@@ -45,11 +45,13 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
         if not self.collect_traj: # If collect the trajector, the update of the buffer is done in the collect_trajectories function
             with Result("buffer") as result:
                 self._update_buffer(batch)
-            update_policy_log = self._update_policy()
+            for _ in range(self.update_step_per_epoch):
+                update_policy_log = self._update_policy()
             result.add(update_policy_log)
             self.buffer.reset()
         else:
-            result = self._update_policy()
+            for _ in range(self.update_step_per_epoch):
+                result = self._update_policy()
             self.traj_rollout.reset() # for on-policy training, we will reset the replay buffer after each update
         return result
         
@@ -101,10 +103,7 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
                             truncated = False
                             if "truncated" in info:
                                 traj_dones[i][-1] = False 
-                                if self.args.env.obs_norm:
-                                    traj_last_observations = self.training_envs._norm_obs(info['last_observation'])
-                                else:
-                                    traj_last_observations = info['last_observation']
+                                traj_last_observations = info['truncated_observation']
                                 truncated = True
 
                             self.episode_reward_buffer.append(info['episode']['r'])
@@ -168,7 +167,7 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
         else:
             return returns, returns - values
     
-    def compute_advantages_from_traj(self)->Tuple[np.ndarray,np.ndarray]:
+    def compute_advantages_from_traj(self)->Tuple[np.ndarray,np.ndarray, np.ndarray]:
         states = self.traj_rollout.states
         rewards = self.traj_rollout.rewards 
         dones = self.traj_rollout.dones 
@@ -176,7 +175,7 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
         
 
         with torch.no_grad():
-            values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((self.trajnum, self.max_episode_length)).cpu().numpy()
+            values = self.agent.get_value(states.reshape((-1,*states.shape[2:]))).squeeze(1).reshape((self.trajnum, self.max_episode_length)).cpu().numpy()
             last_values = self.agent.get_value(last_states).squeeze(1).cpu().numpy()
         
         values_to_cal = values * np.sqrt(self.ret_rms.var + self._eps) if self.return_scaling else values 
@@ -225,8 +224,8 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
         num_envs, rollout_length = states.shape[0], states.shape[1]
 
         with torch.no_grad():
-            values = self.agent.get_value(states.reshape((-1,states.shape[-1]))).squeeze(1).reshape((num_envs, rollout_length)).cpu().numpy()
-            next_values = self.agent.get_value(next_states.reshape((-1,next_states.shape[-1]))).squeeze(1).reshape((num_envs, rollout_length)).cpu().numpy()
+            values = self.agent.get_value(states.reshape((-1,*states.shape[2:]))).squeeze(1).reshape((num_envs, rollout_length)).cpu().numpy()
+            next_values = self.agent.get_value(next_states.reshape((-1,*states.shape[2:]))).squeeze(1).reshape((num_envs, rollout_length)).cpu().numpy()
  
 
         value_to_cal = values * np.sqrt(self.ret_rms.var + self._eps) if self.return_scaling else values

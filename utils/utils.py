@@ -151,11 +151,18 @@ def atari_state_preprocess_function(observation_space:gym.spaces.Space, states:U
 
     :param gym.Env env: the environment to wrap.
     """
-    assert isinstance(states,np.ndarray)
-    if isinstance(observation_space,gym.spaces.Box) and len(observation_space.shape)==3 and states.dtype==np.uint8: #  and observation_space.low==0 and observation_space.high==255: this condition is for atari environment (4,84,84) unit8
-        return states.astype(np.float32) / 255.0
+    if isinstance(states, np.ndarray):
+        if isinstance(observation_space,gym.spaces.Box) and len(observation_space.shape)==3 and states.dtype==np.uint8: #  and observation_space.low==0 and observation_space.high==255: this condition is for atari environment (4,84,84) unit8
+            return states.astype(np.float32) / 255.0
+        else:
+            return states
+    elif isinstance(states, torch.Tensor):
+        if isinstance(observation_space,gym.spaces.Box) and len(observation_space.shape)==3 and states.dtype==torch.uint8: #  and observation_space.low==0 and observation_space.high==255: this condition is for atari environment (4,84,84) unit8
+            return states.float() / 255.0
+        else:
+            return states
     else:
-        return states
+        raise ValueError("states must be np.ndarray or torch.Tensor")
 
 
 def to_useful_action(action_space:Space, action_dim:int, actions: np.ndarray):

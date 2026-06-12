@@ -6,7 +6,6 @@ python run_ppo.py \
   save_interval=1000 \
   test_interval=50 \
   train_action_deterministic=false \
-  algorithm.rescale=false \
   algorithm.collect_traj=false \
   env.name=Hopper-v5 \
   algorithm.buffer_name=ReplayBuffer \

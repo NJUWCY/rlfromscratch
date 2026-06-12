@@ -25,16 +25,13 @@ class DQN(OffPolicyAlgorithm):
         self.end_epsilon = algo_args.end_epsilon
         self.epsilon_timestep = algo_args.epsilon_timestep
         self.epsilon_schedular = algo_args.epsilon_schedular
-        self.use_target = algo_args.use_target 
+        
         self.batch_size = algo_args.batch_size
         self.device = device
         
         
-
+        self.use_target = algo_args.use_target 
         self.target_update_interval = algo_args.target_update_interval
-        
-
-
         
         self.optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.optimizer](self.agent.parameters(), lr=self.lr)
         
@@ -51,7 +48,7 @@ class DQN(OffPolicyAlgorithm):
         with Result("train") as result:
             batch = self.buffer.sample(self.batch_size)
             states, actions, next_states, rewards, dones = batch['states'], batch['actions'], batch['next_states'], batch['rewards'], batch['dones']
-
+            
             rewards = torch.from_numpy(rewards).float().to(self.device).unsqueeze(1)
             dones = torch.from_numpy(dones).float().to(self.device).unsqueeze(1)
 
@@ -73,8 +70,8 @@ class DQN(OffPolicyAlgorithm):
             self.optimizer.step()
 
 
-        if self.use_target and self.gradient_step % self.target_update_interval == 0:
-            self.agent.target_update()
+            if self.use_target and self.gradient_step % self.target_update_interval == 0:
+                self.agent.target_update()
             
 
 

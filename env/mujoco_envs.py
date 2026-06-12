@@ -3,7 +3,7 @@ import gymnasium as gym
 from gymnasium.wrappers import TimeLimit
 from typing import Any
 from .basic_envs import Monitor
-
+from .basic_envs import TruncatedMonitor
 
 
 
@@ -13,6 +13,7 @@ def make_mujoco_env(env_name:str, max_episode_length=1000):
     env = gym.make(env_name)
     env = TimeLimit(env, max_episode_steps=max_episode_length)
     env = Monitor(env)
+    env = TruncatedMonitor(env)
     
     return env
 

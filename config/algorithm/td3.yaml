@@ -20,6 +20,7 @@ hidden_sizes: [256, 256]
 activation: relu
 
 rescale: true
+action_bound_method: tanh
 
 explore_noise_sigma: 0.1
 noise_sigma: 0.2

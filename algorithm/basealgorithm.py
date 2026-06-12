@@ -42,7 +42,8 @@ class BaseAlgorithm(ABC):
         self.num_testing_envs = args.env.num_testing_envs
         self.test_interval = args.test_interval
         self.interact_per_epoch = args.interact_per_epoch
-        self.gradient_step_per_epoch = args.gradient_step_per_epoch
+        self.update_step_per_epoch = args.update_step_per_epoch
+        self.total_update_steps = self.update_step_per_epoch*self.total_epoch
         self.test_episodes = args.test_episodes
         self.train_action_deterministic = args.train_action_deterministic
         self.save_interval = args.save_interval
@@ -112,10 +113,8 @@ class BaseAlgorithm(ABC):
                         # If the terminated is caused by truncation instead of termination, we consider it as not done and use the last observation as the next state for training.
                         batch['dones'][i,step] = False
                         batch['truncateds'][i,step] = True
-                        if self.args.env.obs_norm:
-                            batch['next_states'][i, step] = self.training_envs._norm_obs(info['last_observation'])
-                        else:
-                            batch['next_states'][i,step] = info['last_observation']
+                        batch['next_states'][i, step] = info['truncated_observation']
+                        
                     if "episode" in info:
                         self.episode_reward_buffer.append(info['episode']['r'])
                 self.observations = next_observations

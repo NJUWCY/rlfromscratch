@@ -17,7 +17,7 @@ from utils.utils import get_best_device, set_seed
 from logger.logger import Logger 
 from memory import BUFFER_DICT,ReplayBuffer
 from agent import TD3Agent
-from utils.networks import DeterministicActor, MLPNetwork, DoubleQFunction, QFunction
+from utils.networks import DeterministicActor, MLPNetwork, DoubleQFunction, QFunction, TanhDeterministicActor
 from utils import ACTIVATION_DICT
 
 def get_args(cfg: DictConfig):
@@ -31,7 +31,7 @@ def main(cfg: DictConfig):
     args = get_args(cfg)
     set_seed(args.seed)
     
-    training_envs = make_vec_envs(args.env,True,scale=False,seed=args.seed) # , make_vec_envs(args.env,False,scale=False)
+    training_envs = make_vec_envs(args.env,True,seed=args.seed) # , make_vec_envs(args.env,False,scale=False)
     
     logging.info("Checking for available GPUs...")
     device = get_best_device()
@@ -48,29 +48,49 @@ def main(cfg: DictConfig):
     logging.info("Creating the Agent...")
 
     activation = ACTIVATION_DICT[args.algorithm.activation]
-    actor = DeterministicActor(
-        observation_space=training_envs.observation_space, 
-        action_space=training_envs.action_space, 
-        net_architecture=MLPNetwork, 
-        device=device,
-        rescale=args.algorithm.rescale,
-        action_bound_method="tanh",
-        explore_noise_sigma=args.algorithm.explore_noise_sigma,
-        hidden_sizes=args.algorithm.hidden_sizes, 
-        activation=activation
+    if not args.algorithm.rescale:
+        actor = DeterministicActor(
+            observation_space=training_envs.observation_space, 
+            action_space=training_envs.action_space, 
+            net_architecture=MLPNetwork, 
+            device=device,
+            explore_noise_sigma=args.algorithm.explore_noise_sigma,
+            hidden_sizes=args.algorithm.hidden_sizes, 
+            activation=activation
         )
-    
-    target_actor = DeterministicActor(
-        observation_space=training_envs.observation_space, 
-        action_space=training_envs.action_space, 
-        net_architecture=MLPNetwork, 
-        device=device,
-        rescale=args.algorithm.rescale,
-        action_bound_method="tanh",
-        explore_noise_sigma=args.algorithm.explore_noise_sigma,
-        hidden_sizes=args.algorithm.hidden_sizes, 
-        activation=activation
+        target_actor = DeterministicActor(
+            observation_space=training_envs.observation_space, 
+            action_space=training_envs.action_space, 
+            net_architecture=MLPNetwork, 
+            device=device,
+            explore_noise_sigma=args.algorithm.explore_noise_sigma,
+            hidden_sizes=args.algorithm.hidden_sizes, 
+            activation=activation
         )
+        
+    else:
+        if args.algorithm.action_bound_method == "tanh":
+            actor = TanhDeterministicActor(
+                observation_space=training_envs.observation_space, 
+                action_space=training_envs.action_space, 
+                net_architecture=MLPNetwork, 
+                device=device,
+                explore_noise_sigma=args.algorithm.explore_noise_sigma,
+                hidden_sizes=args.algorithm.hidden_sizes, 
+                activation=activation
+            )
+            target_actor = TanhDeterministicActor(
+                observation_space=training_envs.observation_space, 
+                action_space=training_envs.action_space, 
+                net_architecture=MLPNetwork, 
+                device=device,
+                explore_noise_sigma=args.algorithm.explore_noise_sigma,
+                hidden_sizes=args.algorithm.hidden_sizes, 
+                activation=activation
+            )
+        else:
+            raise ValueError(f"Action bound method {args.algorithm.action_bound_method} not supported")
+        
 
     double_critic = args.algorithm.double_critic
     target_critic = None
@@ -93,9 +113,7 @@ def main(cfg: DictConfig):
         use_target=args.algorithm.use_target, 
         target_update_method=args.algorithm.target_update_method,
         target_update_tau=args.algorithm.target_update_tau,
-        double_critic=double_critic,
-        noise_sigma=args.algorithm.noise_sigma,
-        noise_clip=args.algorithm.noise_clip
+        double_critic=double_critic
         )
 
     

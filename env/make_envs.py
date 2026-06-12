@@ -40,9 +40,9 @@ class VecObsNorm(VecEnvWrapper):
 
         # process with the infos 
         for idx, done in enumerate(dones):
-            if done and "terminal_observation" in infos[idx]:
-                infos[idx]["terminal_observation"] = self._norm_obs(
-                    infos[idx]["terminal_observation"]
+            if done and "truncated_observation" in infos[idx]:
+                infos[idx]["truncated_observation"] = self._norm_obs(
+                    infos[idx]["truncated_observation"]
                 ).astype(np.float32)
 
         return obs, rewards, dones, infos
@@ -75,7 +75,7 @@ def make_env(args: DictConfig,is_training: bool,scale=False):
     return env
 
 
-def make_env_func(args: DictConfig, is_training: bool,scale=False,seed=None):
+def make_env_func(args: DictConfig, is_training: bool,seed=None):
     def _thunk():
         # TODO: add more envs except for atari envs 
         env_name = args.name
@@ -83,7 +83,13 @@ def make_env_func(args: DictConfig, is_training: bool,scale=False,seed=None):
         
         if env_type=="atari":
             env = gym.make(env_name, frameskip=1)
-            env = atari_wrap(env, episode_life=is_training, clip_rewards=is_training, frame_stack=args.frame_stack, scale=scale,frame_skip=args.frame_skip)
+            env = atari_wrap(env, 
+                             episode_life=is_training, 
+                             clip_rewards=is_training, 
+                             frame_stack=args.frame_stack, 
+                             scale=args.scale,
+                             frame_skip=args.frame_skip,
+                             max_episode_steps=args.max_episode_length)
         elif env_type=="mujoco":
             env = make_mujoco_env(env_name,max_episode_length=args.max_episode_length)
         elif env_type=="basic":
@@ -95,16 +101,15 @@ def make_env_func(args: DictConfig, is_training: bool,scale=False,seed=None):
         return env
     return _thunk
 
-def make_vec_envs(args: DictConfig,is_training: bool,seed: int, scale=False):
+def make_vec_envs(args: DictConfig,is_training: bool,seed: int):
     
     env_num = args.num_training_envs if is_training else args.num_testing_envs
 
     envs_func = [
-        make_env_func(args,is_training,scale=scale,seed=i+seed)
+        make_env_func(args,is_training,seed=i+seed)
         for i in range(env_num)
     ]
     # create vectorized environments, if env_num == 1, use DummyVecEnv to avoid unnecessary subprocesses
-    # TODO:here the sb3 returns done = done or truncated, we may need to handle the truncated in the envs like absorbing states
     if env_num == 1:
         envs = DummyVecEnv(envs_func)
     else:

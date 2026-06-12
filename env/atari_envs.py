@@ -10,6 +10,7 @@ from typing import Any, SupportsFloat
 
 from stable_baselines3.common.atari_wrappers import ClipRewardEnv, EpisodicLifeEnv, MaxAndSkipEnv,FireResetEnv, NoopResetEnv, WarpFrame
 from .basic_envs import Monitor
+from .basic_envs import TruncatedMonitor
 
 
 def _parse_reset_result(reset_result: tuple) -> tuple[tuple, dict, bool]:
@@ -140,12 +141,12 @@ class TransposeImage(gym.ObservationWrapper):
 
 
 
-def atari_wrap(env, episode_life=True, clip_rewards=True, frame_stack=4, scale=False,frame_skip=4):
+def atari_wrap(env, episode_life=True, clip_rewards=True, frame_stack=4, scale=False,frame_skip=4,max_episode_steps=10000):
     """Configure environment for DeepMind-style Atari.
     """
     env = NoopResetEnv(env, noop_max=30) # add random no-op action at the beginning of each episode to introduce randomness
     env = MaxAndSkipEnv(env, skip=frame_skip) # skip 4 frames and take the max of the last 2 frames to reduce computational cost and deal with flickering
-    env = TimeLimit(env, max_episode_steps=5000) # set a time limit to prevent infinite episodes, since some games can last forever
+    env = TimeLimit(env, max_episode_steps=max_episode_steps) # set a time limit to prevent infinite episodes, since some games can last forever
     
     env = Monitor(env)
     
@@ -165,5 +166,7 @@ def atari_wrap(env, episode_life=True, clip_rewards=True, frame_stack=4, scale=F
         env = TransposeImage(env)
     if frame_stack:
         env = FrameStack(env, frame_stack)
+    
+    env = TruncatedMonitor(env)
 
     return env

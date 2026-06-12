@@ -11,7 +11,7 @@ from env.make_envs import make_vec_envs
 
 
 def evaluate(agent:AgentBase, test_episodes:int, env_args:DictConfig, seed:int,training_envs):
-    envs = make_vec_envs(env_args,False,seed=seed, scale=False)
+    envs = make_vec_envs(env_args,False,seed=seed)
     if hasattr(training_envs, "obs_rms"):
         envs.set_obs_rms(training_envs.get_obs_rms())
 

@@ -34,6 +34,9 @@ class TD3(OffPolicyAlgorithm):
         self.critic_optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.critic_optimizer](self.agent.critic.parameters(), lr=self.critic_lr)
         self.actor_optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.actor_optimizer](self.agent.actor.parameters(), lr=self.actor_lr)
 
+        self.noise_sigma = algo_args.noise_sigma
+        self.noise_clip = algo_args.noise_clip
+
 
     def _update_buffer(self, batch):
         self.buffer.add(batch)
@@ -48,13 +51,17 @@ class TD3(OffPolicyAlgorithm):
             batch = self.buffer.sample(self.batch_size)
             states, actions, next_states, rewards, dones = batch['states'], batch['actions'], batch['next_states'], batch['rewards'], batch['dones']
 
+            states = torch.from_numpy(states).float().to(self.device)
+            actions = torch.from_numpy(actions).float().to(self.device)
+            next_states = torch.from_numpy(next_states).float().to(self.device)
             rewards = torch.from_numpy(rewards).float().to(self.device).unsqueeze(1)
             dones = torch.from_numpy(dones).float().to(self.device).unsqueeze(1)
 
             # Compute the target value
             with torch.no_grad():
-                next_actions = self.agent.select_action_from_target(next_states)
-                target = rewards + (1-dones) * self.gamma * self.agent.get_q_function(next_states,next_actions,target=True)
+                noise = (torch.randn_like(actions) * self.noise_sigma).clamp(-self.noise_clip, self.noise_clip)
+                next_actions = self.agent.select_action_from_target(next_states,noise)
+                target = rewards + (1-dones) * self.gamma * self.agent.get_q_function_from_target(next_states,next_actions)
                 
 
             q1, q2 = self.agent.get_double_q_function(states, actions)
@@ -72,7 +79,7 @@ class TD3(OffPolicyAlgorithm):
 
             if self.gradient_step%self.target_update_interval==0:
                 
-                q1_new, _ = self.agent.get_double_q_function(states,self.agent.get_action(states))
+                q1_new, _ = self.agent.get_double_q_function(states,self.agent.get_action_with_gradient(states))
 
                 actor_loss = -q1_new.mean()
                 self.actor_optimizer.zero_grad()

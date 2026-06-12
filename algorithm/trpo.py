@@ -33,7 +33,7 @@ class TRPO(OnPolicyAlgorithm):
         self.critic_update_steps = algo_args.critic_update_steps
         self.critic_batch_size = algo_args.critic_batch_size
         self.eigenvalue_reg = algo_args.eigenvalue_reg
-        self.advan_eps = 1e-8
+        self.log_clip_stabilize = algo_args.log_clip_stabilize
         
         
 
@@ -81,13 +81,16 @@ class TRPO(OnPolicyAlgorithm):
             returns = torch.from_numpy(returns).float().to(self.device)
 
             if self.advan_norm:
-                advantages = (advantages-advantages.mean())/(advantages.std()+self.advan_eps)
+                advantages = (advantages-advantages.mean())/(advantages.std()+self._eps)
 
 
 
-            log_prob = self.agent.log_prob(states,actions)
-
-            ratios = (log_prob - old_log_probs).exp()
+            log_probs = self.agent.log_prob(states,actions)
+            if self.log_clip_stabilize:
+            # the max clamp here is to avoid inf in ratios and advantages, which will cause the nan in gradient
+                ratios = (torch.clamp(log_probs - old_log_probs,max=50)).exp()
+            else:
+                ratios = (log_probs - old_log_probs).exp()
 
             surrogate_target = torch.mean(ratios*advantages) 
 
@@ -97,6 +100,7 @@ class TRPO(OnPolicyAlgorithm):
             with torch.no_grad():
                 old_dist = self.agent.dist(states)
             
+            # TODO: here we need to consider other distributions which can't directly use the kl_divergence function
             kl = kl_divergence(old_dist, dist).mean()
 
             kl_grad = get_flat_grad(kl, self.agent.actor, create_graph=True)
@@ -156,7 +160,6 @@ class TRPO(OnPolicyAlgorithm):
 
                     self.optimizer.zero_grad()
                     value_loss.backward()
-                    # torch.nn.utils.clip_grad_norm_(self.agent.critic.parameters(), 1.0)
                     self.optimizer.step()
 
             # # TODO:do the batch update or the epoch update
