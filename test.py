@@ -1,34 +1,64 @@
+"""Determinism probe: isolates GPU *compute* from the training loop / env.
+
+Run it TWICE and compare the printed checksums:
+    python det_probe.py
+    python det_probe.py
+
+If the forward/backward checksums differ between two runs -> it's pure GPU
+compute non-determinism (some op slipping past use_deterministic_algorithms).
+If they are identical -> compute is fine and the non-determinism lives in the
+training loop (RNG consumption order / sampling), which we then chase there.
+"""
+import os
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
 import torch
-from torch.distributions import Normal,Transform,TransformedDistribution,TanhTransform,AffineTransform,Independent
 import numpy as np
-def correct_log_prob_gaussian_tanh(
-    log_prob: torch.Tensor,
-    tanh_squashed_action: torch.Tensor,
-    eps: float = np.finfo(np.float32).eps.item(),
-) -> torch.Tensor:
-    """Apply correction for Tanh squashing when computing `log_prob` from Gaussian.
 
-    See equation 21 in the original `SAC paper <https://arxiv.org/abs/1801.01290>`_.
-
-    :param log_prob: log probability of the action
-    :param tanh_squashed_action: action squashed to values in (-1, 1) range by tanh
-    :param eps: epsilon for numerical stability
-    """
-    log_prob_correction = torch.log(1 - tanh_squashed_action.pow(2) + eps).sum(-1, keepdim=True)
-    return log_prob - log_prob_correction
+from utils.utils import set_seed, get_best_device
+from utils.networks import AtariCNNEncoder, DiscreteProbabilityActor, DiscreteVFunction
 
 
-loc,scale = torch.tensor(15,dtype=torch.float32),torch.tensor(2,dtype=torch.float32)
-dist = Normal(loc=loc, scale=scale)
+def main():
+    set_seed(0)
+    print("torch:", torch.__version__, "| cuda:", torch.version.cuda)
+    print("deterministic:", torch.are_deterministic_algorithms_enabled())
 
-x = dist.sample()
-log_prob = dist.log_prob(x)
-squashed_action = torch.tensor(1.)
-log_prob = correct_log_prob_gaussian_tanh(log_prob, squashed_action)
-print(x,squashed_action)
-print(log_prob)
+    device = get_best_device()
 
-dist = Normal(loc=loc, scale=scale)
-dist = TransformedDistribution(dist, [TanhTransform(cache_size=1), AffineTransform(loc=0, scale=1)])
-t = dist.rsample()
-print(t,dist.log_prob(t))
+    obs_shape = (4, 84, 84)
+    n_actions = 6  # Pong
+
+    # Fake spaces with just the attributes the constructors touch.
+    class Box:  # observation_space
+        shape = obs_shape
+    class Disc:  # action_space
+        n = n_actions
+
+    encoder = AtariCNNEncoder(obs_shape, 512, initialize=True)
+    actor = DiscreteProbabilityActor(Box(), Disc(), encoder, initialize=True)
+    critic = DiscreteVFunction(Box(), Disc(), encoder, initialize=True)
+    actor.to(device); critic.to(device)
+
+    # Fixed, deterministic input -- no env, no sampling randomness.
+    x = (torch.arange(2 * 4 * 84 * 84, dtype=torch.float32, device=device)
+         .reshape(2, 4, 84, 84) % 255) / 255.0
+
+    # ---- forward ----
+    logits = actor.forward(x)
+    value = critic.forward(x)
+    print(f"[FWD] logits_sum = {logits.double().sum().item():.12e}")
+    print(f"[FWD] value_sum  = {value.double().sum().item():.12e}")
+
+    # ---- backward ----
+    loss = logits.pow(2).mean() + value.pow(2).mean()
+    loss.backward()
+    gnorm = 0.0
+    for p in list(actor.parameters()) + list(critic.parameters()):
+        if p.grad is not None:
+            gnorm += p.grad.double().pow(2).sum().item()
+    print(f"[BWD] grad_norm_sq = {gnorm:.12e}")
+
+
+if __name__ == "__main__":
+    main()

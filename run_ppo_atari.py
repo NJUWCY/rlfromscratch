@@ -31,6 +31,8 @@ def get_args(cfg: DictConfig):
 def main(cfg: DictConfig):
     args = get_args(cfg)
     set_seed(args.seed)
+
+
     
     # Attention: here we set the scale=True in PPO training.
     training_envs = make_vec_envs(args.env,True,seed=args.seed) # , make_vec_envs(args.env,False,scale=False)

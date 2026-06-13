@@ -96,7 +96,7 @@ class MLPNetwork(nn.Module):
             layers.append(activation())
             last_dim = hidden_size
         
-        layers.append(layer_init(nn.Linear(last_dim, output_dim),std=last_std))
+        layers.append(layer_init(nn.Linear(last_dim, output_dim),initialize=initialize, std=last_std))
         self.net = nn.Sequential(*layers)
     
     def forward(self, x):

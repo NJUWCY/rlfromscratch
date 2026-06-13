@@ -114,7 +114,12 @@ class PPO(OnPolicyAlgorithm):
         self.optimizer.zero_grad()
         total_loss.backward()
         if self.use_grad_clip:
-            torch.nn.utils.clip_grad_norm_(list(self.agent.actor.parameters()) + list(self.agent.critic.parameters()), max_norm=self.max_grad_norm)
+            # NOTE: actor and critic may share an encoder (common_head=true). Concatenating
+            # actor.parameters() + critic.parameters() would list the shared encoder tensors
+            # twice, which (1) double-counts them in the total-norm computation and double-scales
+            # their grads, and (2) feeds aliased tensors to the foreach clip kernel, which is
+            # non-deterministic and breaks reproducibility. agent.parameters() deduplicates.
+            torch.nn.utils.clip_grad_norm_(self.agent.parameters(), max_norm=self.max_grad_norm)
         self.optimizer.step()
         result_dict['actor/actor_loss'] = actor_loss.item()
         result_dict['critic/loss'] = critic_loss.item()

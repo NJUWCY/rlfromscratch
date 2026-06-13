@@ -14,7 +14,6 @@ def evaluate(agent:AgentBase, test_episodes:int, env_args:DictConfig, seed:int,t
     envs = make_vec_envs(env_args,False,seed=seed)
     if hasattr(training_envs, "obs_rms"):
         envs.set_obs_rms(training_envs.get_obs_rms())
-
     agent.eval()
     states = envs.reset()
     episode_rewards = []
@@ -36,7 +35,3 @@ def evaluate(agent:AgentBase, test_episodes:int, env_args:DictConfig, seed:int,t
     result.add_metric("episode_rewards_std", np.std(episode_rewards))
     envs.close()
     return result, np.mean(episode_rewards)
-        
-
-# def evaluate_mujoco(agent:AgentBase, test_episodes:int, env_args:DictConfig, seed:int):
-#     # TODO

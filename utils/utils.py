@@ -107,7 +107,6 @@ def get_gpu_free_memory_mb(gpu_id: int) -> tuple[float, float]:
         return free_mb, total_mb
 
 def get_best_device():
-
     if not torch.cuda.is_available():
         device = torch.device("cpu")
         print("No GPU detected. Using CPU.")
@@ -143,6 +142,9 @@ def set_seed(seed):
     # Ensure deterministic behavior
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+    
+
 
 
 

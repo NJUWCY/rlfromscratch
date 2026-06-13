@@ -24,7 +24,7 @@ python run_ppo_atari.py \
   algorithm.value_clip=0.1 \
   algorithm.common_head=true \
   env.scale=true \
-  env.obs_norm=false \
+  env.obs_norm=true \
   "$@"
 
 
