@@ -15,4 +15,11 @@ python run_dqn.py \
   algorithm.end_epsilon=0.1 \
   algorithm.target_update_interval=1000 \
   algorithm.target_update_tau=1 \
+  algorithm.doubledqn=true \
+  algorithm.buffer_name="PrioritizedReplayBuffer" \
+  algorithm.weight_batch_norm=true \
+  algorithm.learning_rate=5e-5 \
+  algorithm.dueling_network=true \
+  algorithm.conv_gradient_rescale=true \
+  algorithm.use_grad_clip=true \
   "$@"

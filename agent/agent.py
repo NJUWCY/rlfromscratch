@@ -143,6 +143,15 @@ class AtariDQNAgent(AgentBase):
         q_max = torch.max(all_q_values, dim=1, keepdim=True).values
         return q_max 
 
+    def get_ddqn_target(self, states):
+        states = atari_state_preprocess_function(self.observation_space, states)
+        states = to_correct_device_tensor(states, self.device)
+        all_q_values_target = self.target_network(states)
+        all_q_values_online = self.network(states)
+        chosen_actions = torch.argmax(all_q_values_online, dim=1, keepdim=True)
+        return all_q_values_target.gather(1,chosen_actions)
+
+
 
 
 class A2CAgent(AgentBase):

@@ -4,6 +4,8 @@ buffer_name: ReplayBuffer
 buffer_size: 1000000
 learning_rate: 1e-4
 optimizer: Adam
+huber_loss: false
+
 start_epsilon: 1
 end_epsilon: 0.1
 epsilon_schedular: linear
@@ -13,3 +15,12 @@ target_update_method: hard
 target_update_interval: 10000
 target_update_tau: 0.005
 batch_size: 32
+
+doubledqn: false
+alpha: 0.6
+beta: 0.4
+weight_batch_norm: false
+
+dueling_network: false
+conv_gradient_rescale: false 
+use_grad_clip: false

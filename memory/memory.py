@@ -1,7 +1,9 @@
 
 import numpy as np
+import random
 import gymnasium as gym 
 from utils.utils import get_action_dim
+from .datastructure import SumTree
 
 
 
@@ -49,6 +51,9 @@ class ReplayBuffer:
     
         end = self.pos + batch_size
 
+
+        indices = (self.pos + np.arange(batch_size))%self.buffer_size
+
         if end <= self.buffer_size:
             # not crossing the boundary
             for key in self.buffer:
@@ -64,6 +69,8 @@ class ReplayBuffer:
         if end>=self.buffer_size:
             self.full = True
         self.pos = end % self.buffer_size
+
+        return indices 
         
        
 
@@ -108,6 +115,88 @@ class ReplayBuffer:
 
         self.pos = 0
         self.full = False 
+
+
+class PrioritizedReplayBuffer(ReplayBuffer):
+    """
+    This implementation is based on the proportional prioritized replay buffer.
+    """
+    def __init__(self,observation_space: gym.spaces.Box,
+                 action_space: gym.spaces.Space,
+                 buffer_size: int,
+                 num_envs: int,
+                 alpha: float,
+                 beta: float,
+                 epsilon=1e-6,
+                 batch_norm=False,
+                 onpolicy=False):
+
+        assert num_envs==1, "We only implement Prioritized Replaybuffer for num_envs==1"
+        super(PrioritizedReplayBuffer, self).__init__(observation_space, action_space, buffer_size, num_envs, onpolicy)
+
+        self.alpha = alpha 
+        self.beta = beta 
+        self.epsilon = epsilon
+        self.priority = SumTree(buffer_size)
+
+        self.max_td = 1.
+
+        self.batch_norm = batch_norm
+
+    def add(self,batch: dict[str, np.ndarray]):
+        indices = super().add(batch)
+        initial_priority = np.ones_like(indices,dtype=np.float64)*(self.max_td ** self.alpha)
+        self.priority[indices] = initial_priority
+        return indices
+
+    
+    def _get_indices(self,batch_size:int):
+        # Note: Here we use the stratified sampling according to the implementation in RainBow
+        
+        p_sum = self.priority.tree[1]
+        segment = p_sum / batch_size
+        ratios = np.arange(batch_size,dtype=np.float64) * segment 
+        ratios += np.random.uniform(0.0, segment, [batch_size])
+        
+        indices = self.priority.get_prefix_idx(ratios)
+        return indices
+
+    def _get_weight(self, indices:np.ndarray):
+        # Note: We do the normalization inside the batch
+        weights = (self.priority[indices])**(-self.beta)
+        weights = weights / weights.max()
+        return weights
+
+    def sample(self, batch_size: int) -> dict[str, np.ndarray]:
+        """Sample a batch of transitions from the replay buffer."""
+        # This is only used for off-policy
+        
+        batch_indices = self._get_indices(batch_size)
+        batch = self._sample_from_indices(batch_indices)
+        weights = self._get_weight(batch_indices)
+        batch['weights'] = weights 
+        batch['indices'] = batch_indices
+        return batch 
+
+
+    def update_priority(self, indices:np.ndarray, td_error:np.ndarray):
+        assert indices.shape==td_error.shape
+        td_abs = np.abs(td_error) + self.epsilon
+        priorities = td_abs**self.alpha
+        self.max_td = max(self.max_td, td_abs.max())
+        self.priority[indices] = priorities
+        
+
+
+    def reset(self):
+        super().reset()
+        self.priority = SumTree(self.buffer_size)
+        self.max_td = 1.
+    
+
+    
+
+        
 
 
 class TrajectoryRollout:
@@ -172,7 +261,73 @@ class TrajectoryRollout:
         self.full = False 
     
 
-            
 
 
+
+if __name__ == "__main__":
+    obs_space = gym.spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
+    act_space = gym.spaces.Discrete(2)
+
+    buffer_size = 8
+    num_envs = 1
+    alpha = 0.6
+    beta = 0.4
+
+    buf = PrioritizedReplayBuffer(obs_space, act_space, buffer_size, num_envs, alpha, beta)
+
+    # 手动构造两批数据，每批 4 个 transition
+    batch1 = {
+        "states": np.array([[[1, 0, 0, 0],
+                             [2, 0, 0, 0],
+                             [3, 0, 0, 0],
+                             [4, 0, 0, 0]]], dtype=np.float32),
+        "actions": np.array([[[0], [1], [0], [1]]], dtype=np.int64),
+        "rewards": np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32),
+        "dones": np.array([[0, 0, 0, 1]], dtype=np.float32),
+        "next_states": np.array([[[2, 0, 0, 0],
+                                  [3, 0, 0, 0],
+                                  [4, 0, 0, 0],
+                                  [5, 0, 0, 0]]], dtype=np.float32),
+    }
+
+    batch2 = {
+        "states": np.array([[[5, 0, 0, 0],
+                             [6, 0, 0, 0],
+                             [7, 0, 0, 0],
+                             [8, 0, 0, 0]]], dtype=np.float32),
+        "actions": np.array([[[1], [0], [1], [0]]], dtype=np.int64),
+        "rewards": np.array([[5.0, 6.0, 7.0, 8.0]], dtype=np.float32),
+        "dones": np.array([[0, 0, 1, 0]], dtype=np.float32),
+        "next_states": np.array([[[6, 0, 0, 0],
+                                  [7, 0, 0, 0],
+                                  [8, 0, 0, 0],
+                                  [9, 0, 0, 0]]], dtype=np.float32),
+    }
+
+    print("=== 添加 batch1 (indices 0-3) ===")
+    indices1 = buf.add(batch1)
+    print(f"indices: {indices1}")
+    print(f"SumTree leaves: {buf.priority.tree[buf.priority.bound:][:buffer_size]}")
+
+    print("\n=== 添加 batch2 (indices 4-7) ===")
+    indices2 = buf.add(batch2)
+    print(f"indices: {indices2}")
+    print(f"SumTree leaves: {buf.priority.tree[buf.priority.bound:][:buffer_size]}")
+    print(f"SumTree root (total priority): {buf.priority.tree[1]}")
+
+    # 手动指定 td_error 来更新优先级
+    td_errors = np.array([0.1, 0.5, 2.0, 0.3, 1.0, 0.2, 3.0, 0.8])
+    all_indices = np.arange(buffer_size)
+    print(f"\n=== 更新优先级, td_errors = {td_errors} ===")
+    buf.update_priority(all_indices, td_errors)
+    print(f"SumTree leaves: {buf.priority.tree[buf.priority.bound:][:buffer_size]}")
+    print(f"SumTree root (total priority): {buf.priority.tree[1]}")
+    print(f"max_td: {buf.max_td}, min_td: {buf.min_td}")
+
+    # 采样并查看 weights
+    print("\n=== 采样 batch_size=4 ===")
+    batch = buf.sample(4)
+    print(f"sampled states[:,0]: {batch['states'][:, 0]}")
+    print(f"sampled rewards: {batch['rewards']}")
+    print(f"weights: {batch['weights']}")
 

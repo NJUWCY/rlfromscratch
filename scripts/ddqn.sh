@@ -15,4 +15,5 @@ python run_dqn.py \
   algorithm.end_epsilon=0.1 \
   algorithm.target_update_interval=1000 \
   algorithm.target_update_tau=1 \
+  algorithm.doubledqn=true \
   "$@"

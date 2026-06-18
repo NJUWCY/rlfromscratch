@@ -14,6 +14,7 @@ except ImportError:
 from torch.utils.tensorboard import SummaryWriter
 from rich.console import Console 
 from rich.table import Table 
+from omegaconf import OmegaConf, DictConfig
 
 
 
@@ -44,10 +45,17 @@ class Logger:
         self.use_tensorboard = use_tensorboard
         self.use_swanlab = use_swanlab
         self.log_dir = log_dir
+        
+
+        if isinstance(config, DictConfig):
+            config = OmegaConf.to_container(config, resolve=True)
+            
         if self.use_wandb:
             if wandb is None:
                 raise ImportError("wandb is enabled but the wandb package is not installed.")
             wandb.init(project=project_name, name=run_name,dir=log_dir)
+        
+        
         if self.use_swanlab:
             if swanlab is None:
                 raise ImportError("swanlab is enabled but the swanlab package is not installed.")
@@ -62,14 +70,11 @@ class Logger:
         if self.use_tensorboard:
             self.writer.add_scalar(key, value, global_step=step)
         if self.use_swanlab:
-            swanlab.log({key:value,"step":step})
+            swanlab.log({key:value},step=step)
 
     def log_train(self, epoch, interaction_step, gradient_step, train_result: Result): 
         for k,v in train_result.metrics.items():
-            if "network" in k:
-                self._log(k, v, gradient_step)
-            else:
-                self._log(f"train/{k}", v, interaction_step) # for non-loss metrics, we log them with interaction steps, for loss metrics, we log them with gradient steps
+            self._log(f"train/{k}", v, interaction_step) # for non-loss metrics, we log them with interaction steps, for loss metrics, we log them with gradient steps
 
             
         _print(training=True, epoch=epoch, interaction_step=interaction_step, gradient_step=gradient_step, metrics=train_result.metrics)

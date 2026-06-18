@@ -15,7 +15,7 @@ from env.make_envs import make_vec_envs
 from algorithm import OffPolicyAlgorithm, DQN, ALGORITHM_DICT
 from utils.utils import get_best_device, set_seed
 from logger.logger import Logger 
-from memory import ReplayBuffer
+from memory import ReplayBuffer, PrioritizedReplayBuffer
 from agent.agent import AtariDQNAgent
 from utils.networks import AtariDQNNetwork
 
@@ -42,13 +42,30 @@ def main(cfg: DictConfig):
     logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args.algorithm, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
 
     logging.info("Creating the ReplayBuffer...")
-    assert args.algorithm.buffer_name=="ReplayBuffer"
-    buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.algorithm.buffer_size//training_envs.num_envs, training_envs.num_envs)
-
+    if args.algorithm.buffer_name=="ReplayBuffer":
+        buffer = ReplayBuffer(training_envs.observation_space, 
+                              training_envs.action_space, 
+                              args.algorithm.buffer_size//training_envs.num_envs, 
+                              training_envs.num_envs)
+    elif args.algorithm.buffer_name=="PrioritizedReplayBuffer":
+        buffer = PrioritizedReplayBuffer(training_envs.observation_space, 
+                                         training_envs.action_space, 
+                                         args.algorithm.buffer_size//training_envs.num_envs, 
+                                         training_envs.num_envs,
+                                         alpha=args.algorithm.alpha,
+                                         beta=args.algorithm.beta,
+                                         batch_norm=args.algorithm.weight_batch_norm)
     logging.info("Creating the Agent...")
-    network = AtariDQNNetwork(training_envs.observation_space.shape, training_envs.action_space.n)
+    network = AtariDQNNetwork(training_envs.observation_space.shape, 
+                              training_envs.action_space.n, 
+                              dueling_network=args.algorithm.dueling_network, 
+                              conv_gradient_rescale=args.algorithm.conv_gradient_rescale)
     if args.algorithm.use_target:
-        target_network = AtariDQNNetwork(training_envs.observation_space.shape, training_envs.action_space.n)
+        target_network = AtariDQNNetwork(training_envs.observation_space.shape, 
+                                         training_envs.action_space.n, 
+                                         dueling_network=args.algorithm.dueling_network,
+                                         conv_gradient_rescale=args.algorithm.conv_gradient_rescale)
+        
         agent = AtariDQNAgent(training_envs.observation_space, 
                               training_envs.action_space, 
                               device, 
