@@ -50,6 +50,8 @@ class DQN(OffPolicyAlgorithm):
         self.beta = algo_args.beta
         self.beta_increment = (1-self.beta)/self.total_update_steps # here we use the default target 1 set in prioritized replay buffer paper
         self.buffer_name = algo_args.buffer_name
+
+        self.nstep = algo_args.nstep
         
     
 
@@ -64,23 +66,28 @@ class DQN(OffPolicyAlgorithm):
             batch = self.buffer.sample(self.batch_size)
             states, actions, next_states, rewards, dones = batch['states'], batch['actions'], batch['next_states'], batch['rewards'], batch['dones']
             
+            states = torch.from_numpy(states).to(self.device)
+            actions = torch.from_numpy(actions).to(self.device)
+            next_states = torch.from_numpy(next_states).to(self.device)
+
             rewards = torch.from_numpy(rewards).float().to(self.device).unsqueeze(1)
             dones = torch.from_numpy(dones).float().to(self.device).unsqueeze(1)
+            nstep_gamma = torch.from_numpy(batch['nstep_gamma']).float().to(self.device).unsqueeze(1)
 
 
             if self.doubledqn:
                 # calculate the DDQN target
                 with torch.no_grad():
                     targetv = self.agent.get_ddqn_target(next_states)
-                    target = rewards + (1 - dones) * self.gamma * targetv
+                    target = rewards + (1 - dones) * nstep_gamma * targetv
 
             else:
                 # calculate the DQN target
                 with torch.no_grad():
                     if self.use_target:
-                        target = rewards + (1 - dones) * self.gamma * self.agent.get_max_q(next_states,target=True)
+                        target = rewards + (1 - dones) * nstep_gamma * self.agent.get_max_q(next_states,target=True)
                     else:
-                        target = rewards + (1 - dones) * self.gamma * self.agent.get_max_q(next_states,target=False)
+                        target = rewards + (1 - dones) * nstep_gamma * self.agent.get_max_q(next_states,target=False)
             q = self.agent.get_q(states, actions)
             
             td_error = target - q

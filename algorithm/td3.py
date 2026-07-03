@@ -56,12 +56,13 @@ class TD3(OffPolicyAlgorithm):
             next_states = torch.from_numpy(next_states).float().to(self.device)
             rewards = torch.from_numpy(rewards).float().to(self.device).unsqueeze(1)
             dones = torch.from_numpy(dones).float().to(self.device).unsqueeze(1)
+            nstep_gamma = torch.from_numpy(batch['nstep_gamma']).float().to(self.device).unsqueeze(1)
 
             # Compute the target value
             with torch.no_grad():
                 noise = (torch.randn_like(actions) * self.noise_sigma).clamp(-self.noise_clip, self.noise_clip)
                 next_actions = self.agent.select_action_from_target(next_states,noise)
-                target = rewards + (1-dones) * self.gamma * self.agent.get_q_function_from_target(next_states,next_actions)
+                target = rewards + (1-dones) * nstep_gamma * self.agent.get_q_function_from_target(next_states,next_actions)
                 
 
             q1, q2 = self.agent.get_double_q_function(states, actions)

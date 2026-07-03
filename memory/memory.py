@@ -14,7 +14,10 @@ class ReplayBuffer:
                  action_space: gym.spaces.Space,
                  buffer_size: int,
                  num_envs: int, 
-                 onpolicy=False):
+                 gamma:float=0.99,
+                 nstep:int=1,
+                 onpolicy=False
+                 ):
         
         self.buffer_size = buffer_size
         action_dim = get_action_dim(action_space)
@@ -26,16 +29,21 @@ class ReplayBuffer:
             "rewards": {"shape": (self.num_envs, buffer_size), "dtype": np.float32},
             "next_states": {"shape": (self.num_envs, buffer_size, *observation_space.shape), "dtype": observation_space.dtype}
         }
+        self.buffer_message['truncateds'] = {"shape": (self.num_envs, buffer_size), "dtype": np.float32}
         self.onpolicy = onpolicy
         if onpolicy:
             self.buffer_message['log_probs'] = {"shape": (self.num_envs, buffer_size), "dtype": np.float32}
-            self.buffer_message['truncateds'] = {"shape": (self.num_envs, buffer_size), "dtype": np.float32}
+            
         
         self.buffer = {}
     
         # we think the replay buffer as a big circle 
         self.pos = 0
         self.full = False 
+
+        self.nstep = nstep
+        self.gamma = gamma
+
         self.reset()
 
 
@@ -71,7 +79,55 @@ class ReplayBuffer:
         self.pos = end % self.buffer_size
 
         return indices 
+
+    def _is_outof_range(self, indices:np.ndarray):
+        if self.full:
+            return indices>=self.buffer_size 
+        else:
+            return indices>=self.pos
+    
+    def _loop_to_real(self, loop_indices:np.ndarray):
+        if self.full:
+            return (loop_indices+self.pos)%self.buffer_size 
+        else:
+            return loop_indices 
+    
+    def _compute_nstep(self,env_indices:np.ndarray, indices: np.ndarray, batch: dict):
+        if self.full:
+            loop_indices = indices - self.pos 
+            loop_indices[loop_indices<0] += self.buffer_size 
+        else:
+            loop_indices = np.copy(indices)
+
+
+        end_loop_indices = np.copy(loop_indices)
+        returns = np.copy(batch['rewards'])
         
+        for i in range(1,self.nstep):
+
+            outof_range = self._is_outof_range(end_loop_indices+1)
+
+            end_indices = self._loop_to_real(end_loop_indices)
+            done = np.logical_or(self.buffer['dones'][env_indices, end_indices], \
+                           self.buffer['truncateds'][env_indices, end_indices])
+            
+            end_loop_indices += 1
+            end_loop_indices[np.logical_or(outof_range, done)] -= 1
+
+            cur_indices = loop_indices + i
+            outof_end = cur_indices > end_loop_indices
+            cur_indices[outof_end] = 0 # random choose an index 
+            returns += self.gamma**i * (1-outof_end) * self.buffer['rewards'][env_indices, self._loop_to_real(cur_indices)]
+
+        end_real_indices = self._loop_to_real(end_loop_indices)
+        dones = self.buffer['dones'][env_indices, end_real_indices]
+
+        
+        batch['rewards'] = returns 
+        batch['dones'] = dones
+        batch['next_states'] = self.buffer['next_states'][env_indices, end_real_indices]
+        batch['nstep_gamma'] = self.gamma ** (end_loop_indices - loop_indices + 1)
+        return batch 
        
 
     def _sample_from_indices(self, batch_indices: np.ndarray) -> dict[str, np.ndarray]:
@@ -83,6 +139,8 @@ class ReplayBuffer:
         batch = {}
         for key in self.buffer:
             batch[key] = self.buffer[key][env_indices, batch_indices]
+        
+        batch = self._compute_nstep(env_indices, batch_indices, batch)
         
 
         return batch
@@ -129,10 +187,12 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                  beta: float,
                  epsilon=1e-6,
                  batch_norm=False,
+                 gamma=0.99,
+                 nstep=1,
                  onpolicy=False):
 
         assert num_envs==1, "We only implement Prioritized Replaybuffer for num_envs==1"
-        super(PrioritizedReplayBuffer, self).__init__(observation_space, action_space, buffer_size, num_envs, onpolicy)
+        super(PrioritizedReplayBuffer, self).__init__(observation_space, action_space, buffer_size, num_envs, gamma, nstep, onpolicy)
 
         self.alpha = alpha 
         self.beta = beta 
@@ -265,69 +325,197 @@ class TrajectoryRollout:
 
 
 if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, "/home/ubuntu/wangchenyang/RLfromscratch")
+
     obs_space = gym.spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
     act_space = gym.spaces.Discrete(2)
 
-    buffer_size = 8
-    num_envs = 1
-    alpha = 0.6
-    beta = 0.4
+    passed, failed = 0, 0
+    def check(cond, msg):
+        global passed, failed
+        if cond:
+            passed += 1; print(f"  [PASS] {msg}")
+        else:
+            failed += 1; print(f"  [FAIL] {msg}")
 
-    buf = PrioritizedReplayBuffer(obs_space, act_space, buffer_size, num_envs, alpha, beta)
-
-    # 手动构造两批数据，每批 4 个 transition
-    batch1 = {
-        "states": np.array([[[1, 0, 0, 0],
-                             [2, 0, 0, 0],
-                             [3, 0, 0, 0],
-                             [4, 0, 0, 0]]], dtype=np.float32),
-        "actions": np.array([[[0], [1], [0], [1]]], dtype=np.int64),
-        "rewards": np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32),
-        "dones": np.array([[0, 0, 0, 1]], dtype=np.float32),
-        "next_states": np.array([[[2, 0, 0, 0],
-                                  [3, 0, 0, 0],
-                                  [4, 0, 0, 0],
-                                  [5, 0, 0, 0]]], dtype=np.float32),
+    # ====== Test 1: nstep=3, no done/truncated, normal case ======
+    print("=" * 60)
+    print("Test 1: nstep=3, continuous trajectory (no done/truncated)")
+    print("=" * 60)
+    gamma = 0.99
+    buf = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=3)
+    batch = {
+        "states": np.arange(10).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
+        "actions": np.zeros((1, 10, 1), dtype=np.int64),
+        "rewards": np.array([[1., 2., 3., 4., 5., 6., 7., 8., 9., 10.]], dtype=np.float32),
+        "dones": np.zeros((1, 10), dtype=np.float32),
+        "truncateds": np.zeros((1, 10), dtype=np.float32),
+        "next_states": np.arange(1, 11).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
     }
+    buf.add(batch)
 
+    env_idx = np.array([0, 0, 0])
+    sample_idx = np.array([0, 3, 5])
+    sample_batch = {key: buf.buffer[key][env_idx, sample_idx] for key in buf.buffer}
+    result = buf._compute_nstep(env_idx, sample_idx, sample_batch)
+
+    # index 0: r0 + gamma*r1 + gamma^2*r2, next_state=state[2]
+    exp0 = 1 + gamma*2 + gamma**2*3
+    check(abs(result['rewards'][0] - exp0) < 1e-5, f"idx0 return: expected {exp0:.4f}, got {result['rewards'][0]:.4f}")
+    check(result['next_states'][0, 0] == 3.0, f"idx0 next_state should be state[2]'s next=3, got {result['next_states'][0, 0]}")
+    check(abs(result['nstep_gamma'][0] - gamma**3) < 1e-5, f"idx0 nstep_gamma should be gamma^3")
+
+    # index 3: r3 + gamma*r4 + gamma^2*r5
+    exp3 = 4 + gamma*5 + gamma**2*6
+    check(abs(result['rewards'][1] - exp3) < 1e-5, f"idx3 return: expected {exp3:.4f}, got {result['rewards'][1]:.4f}")
+
+    # ====== Test 2: nstep=3, done in the middle ======
+    print("\n" + "=" * 60)
+    print("Test 2: nstep=3, done truncates the n-step lookahead")
+    print("=" * 60)
+    buf2 = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=3)
     batch2 = {
-        "states": np.array([[[5, 0, 0, 0],
-                             [6, 0, 0, 0],
-                             [7, 0, 0, 0],
-                             [8, 0, 0, 0]]], dtype=np.float32),
-        "actions": np.array([[[1], [0], [1], [0]]], dtype=np.int64),
-        "rewards": np.array([[5.0, 6.0, 7.0, 8.0]], dtype=np.float32),
-        "dones": np.array([[0, 0, 1, 0]], dtype=np.float32),
-        "next_states": np.array([[[6, 0, 0, 0],
-                                  [7, 0, 0, 0],
-                                  [8, 0, 0, 0],
-                                  [9, 0, 0, 0]]], dtype=np.float32),
+        "states": np.arange(10).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
+        "actions": np.zeros((1, 10, 1), dtype=np.int64),
+        "rewards": np.array([[1., 2., 3., 4., 5., 6., 7., 8., 9., 10.]], dtype=np.float32),
+        "dones": np.array([[0, 1, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=np.float32),  # done at index 1
+        "truncateds": np.zeros((1, 10), dtype=np.float32),
+        "next_states": np.arange(1, 11).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
     }
+    buf2.add(batch2)
 
-    print("=== 添加 batch1 (indices 0-3) ===")
-    indices1 = buf.add(batch1)
-    print(f"indices: {indices1}")
-    print(f"SumTree leaves: {buf.priority.tree[buf.priority.bound:][:buffer_size]}")
+    env_idx2 = np.array([0])
+    sample_idx2 = np.array([0])
+    sample_batch2 = {key: buf2.buffer[key][env_idx2, sample_idx2] for key in buf2.buffer}
+    result2 = buf2._compute_nstep(env_idx2, sample_idx2, sample_batch2)
 
-    print("\n=== 添加 batch2 (indices 4-7) ===")
-    indices2 = buf.add(batch2)
-    print(f"indices: {indices2}")
-    print(f"SumTree leaves: {buf.priority.tree[buf.priority.bound:][:buffer_size]}")
-    print(f"SumTree root (total priority): {buf.priority.tree[1]}")
+    # index 0: done at index 1, so lookahead stops at index 1
+    # return = r0 + gamma*r1, next_state = next_states[1]
+    exp_done = 1 + gamma * 2
+    check(abs(result2['rewards'][0] - exp_done) < 1e-5,
+          f"done@1: return from idx0 should be {exp_done:.4f}, got {result2['rewards'][0]:.4f}")
+    check(result2['next_states'][0, 0] == 2.0,
+          f"done@1: next_state should be next_states[1]=2, got {result2['next_states'][0, 0]}")
+    check(result2['dones'][0] == 1.0, f"done@1: final done flag should be 1.0, got {result2['dones'][0]}")
+    check(abs(result2['nstep_gamma'][0] - gamma**2) < 1e-5,
+          f"done@1: nstep_gamma should be gamma^2, got {result2['nstep_gamma'][0]}")
 
-    # 手动指定 td_error 来更新优先级
-    td_errors = np.array([0.1, 0.5, 2.0, 0.3, 1.0, 0.2, 3.0, 0.8])
-    all_indices = np.arange(buffer_size)
-    print(f"\n=== 更新优先级, td_errors = {td_errors} ===")
-    buf.update_priority(all_indices, td_errors)
-    print(f"SumTree leaves: {buf.priority.tree[buf.priority.bound:][:buffer_size]}")
-    print(f"SumTree root (total priority): {buf.priority.tree[1]}")
-    print(f"max_td: {buf.max_td}, min_td: {buf.min_td}")
+    # ====== Test 3: nstep=3, truncated in the middle ======
+    print("\n" + "=" * 60)
+    print("Test 3: nstep=3, truncated truncates the n-step lookahead")
+    print("=" * 60)
+    buf3 = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=3)
+    batch3 = {
+        "states": np.arange(10).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
+        "actions": np.zeros((1, 10, 1), dtype=np.int64),
+        "rewards": np.array([[1., 2., 3., 4., 5., 6., 7., 8., 9., 10.]], dtype=np.float32),
+        "dones": np.zeros((1, 10), dtype=np.float32),
+        "truncateds": np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0, 0]], dtype=np.float32),  # truncated at index 2
+        "next_states": np.arange(1, 11).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
+    }
+    buf3.add(batch3)
 
-    # 采样并查看 weights
-    print("\n=== 采样 batch_size=4 ===")
-    batch = buf.sample(4)
-    print(f"sampled states[:,0]: {batch['states'][:, 0]}")
-    print(f"sampled rewards: {batch['rewards']}")
-    print(f"weights: {batch['weights']}")
+    env_idx3 = np.array([0])
+    sample_idx3 = np.array([1])
+    sample_batch3 = {key: buf3.buffer[key][env_idx3, sample_idx3] for key in buf3.buffer}
+    result3 = buf3._compute_nstep(env_idx3, sample_idx3, sample_batch3)
 
+    # index 1: truncated at index 2, so end_index stops at 2
+    # return = r1 + gamma*r2, next_state = next_states[2]
+    exp_trunc = 2 + gamma * 3
+   
+    check(abs(result3['rewards'][0] - exp_trunc) < 1e-5,
+          f"trunc@2: return from idx1 should be {exp_trunc:.4f}, got {result3['rewards'][0]:.4f}")
+    check(result3['next_states'][0, 0] == 3.0,
+          f"trunc@2: next_state should be next_states[2]=3, got {result3['next_states'][0, 0]}")
+    check(result3['dones'][0] == 0.0,
+          f"trunc@2: done flag should remain 0 (truncated != done), got {result3['dones'][0]}")
+
+    # ====== Test 4: nstep=3, boundary (buffer not full, near end) ======
+    print("\n" + "=" * 60)
+    print("Test 4: nstep=3, near buffer boundary (pos < buffer_size)")
+    print("=" * 60)
+    buf4 = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=3)
+    short_batch = {
+        "states": np.arange(5).reshape(1, 5, 1).repeat(4, axis=2).astype(np.float32),
+        "actions": np.zeros((1, 5, 1), dtype=np.int64),
+        "rewards": np.array([[1., 2., 3., 4., 5.]], dtype=np.float32),
+        "dones": np.zeros((1, 5), dtype=np.float32),
+        "truncateds": np.zeros((1, 5), dtype=np.float32),
+        "next_states": np.arange(1, 6).reshape(1, 5, 1).repeat(4, axis=2).astype(np.float32),
+    }
+    buf4.add(short_batch)
+    # buf4.pos = 5, buf4.full = False
+
+    env_idx4 = np.array([0])
+    sample_idx4 = np.array([4])  # last valid index
+    sample_batch4 = {key: buf4.buffer[key][env_idx4, sample_idx4] for key in buf4.buffer}
+    result4 = buf4._compute_nstep(env_idx4, sample_idx4, sample_batch4)
+
+    # index 4: next index 5 is out of range (pos=5), so end_index stays at 4
+    # return = r4 only (no lookahead), nstep_gamma = gamma^1
+    check(abs(result4['rewards'][0] - 5.0) < 1e-5,
+          f"boundary: return from idx4 should be 5.0 (no lookahead), got {result4['rewards'][0]:.4f}")
+    check(abs(result4['nstep_gamma'][0] - gamma) < 1e-5,
+          f"boundary: nstep_gamma should be gamma^1, got {result4['nstep_gamma'][0]}")
+
+    # index 3: can look 1 step ahead (index 4 valid, index 5 out of range)
+    sample_idx4b = np.array([3])
+    env_idx4b = np.array([0])
+    sample_batch4b = {key: buf4.buffer[key][env_idx4b, sample_idx4b] for key in buf4.buffer}
+    result4b = buf4._compute_nstep(env_idx4b, sample_idx4b, sample_batch4b)
+
+    exp_boundary = 4 + gamma * 5
+    check(abs(result4b['rewards'][0] - exp_boundary) < 1e-5,
+          f"boundary: return from idx3 should be {exp_boundary:.4f}, got {result4b['rewards'][0]:.4f}")
+    check(abs(result4b['nstep_gamma'][0] - gamma**2) < 1e-5,
+          f"boundary: nstep_gamma should be gamma^2, got {result4b['nstep_gamma'][0]}")
+
+    # ====== Test 5: nstep=1, should just return original reward ======
+    print("\n" + "=" * 60)
+    print("Test 5: nstep=1, no lookahead (baseline check)")
+    print("=" * 60)
+    buf5 = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=1)
+    buf5.add(short_batch)
+
+    env_idx5 = np.array([0, 0, 0])
+    sample_idx5 = np.array([0, 2, 4])
+    sample_batch5 = {key: buf5.buffer[key][env_idx5, sample_idx5] for key in buf5.buffer}
+    result5 = buf5._compute_nstep(env_idx5, sample_idx5, sample_batch5)
+
+    check(abs(result5['rewards'][0] - 1.0) < 1e-5, f"nstep=1: idx0 reward should be 1.0, got {result5['rewards'][0]}")
+    check(abs(result5['rewards'][1] - 3.0) < 1e-5, f"nstep=1: idx2 reward should be 3.0, got {result5['rewards'][1]}")
+    check(abs(result5['rewards'][2] - 5.0) < 1e-5, f"nstep=1: idx4 reward should be 5.0, got {result5['rewards'][2]}")
+
+    # ====== Test 6: done at start index itself ======
+    print("\n" + "=" * 60)
+    print("Test 6: nstep=3, done at the sampled index itself")
+    print("=" * 60)
+    buf6 = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=3)
+    batch6 = {
+        "states": np.arange(5).reshape(1, 5, 1).repeat(4, axis=2).astype(np.float32),
+        "actions": np.zeros((1, 5, 1), dtype=np.int64),
+        "rewards": np.array([[1., 2., 3., 4., 5.]], dtype=np.float32),
+        "dones": np.array([[1, 0, 0, 0, 0]], dtype=np.float32),  # done at index 0
+        "truncateds": np.zeros((1, 5), dtype=np.float32),
+        "next_states": np.arange(1, 6).reshape(1, 5, 1).repeat(4, axis=2).astype(np.float32),
+    }
+    buf6.add(batch6)
+
+    env_idx6 = np.array([0])
+    sample_idx6 = np.array([0])
+    sample_batch6 = {key: buf6.buffer[key][env_idx6, sample_idx6] for key in buf6.buffer}
+    result6 = buf6._compute_nstep(env_idx6, sample_idx6, sample_batch6)
+
+    # done at index 0 means end_index stays at 0
+    check(abs(result6['rewards'][0] - 1.0) < 1e-5,
+          f"done@start: return should be 1.0 (no lookahead), got {result6['rewards'][0]}")
+    check(result6['dones'][0] == 1.0, f"done@start: done flag should be 1.0, got {result6['dones'][0]}")
+    check(abs(result6['nstep_gamma'][0] - gamma) < 1e-5,
+          f"done@start: nstep_gamma should be gamma^1, got {result6['nstep_gamma'][0]}")
+
+    # ====== Summary ======
+    print("\n" + "=" * 60)
+    print(f"Results: {passed}/{passed+failed} passed, {failed} failed")
+    print("=" * 60)

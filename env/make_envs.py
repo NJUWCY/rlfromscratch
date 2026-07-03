@@ -69,6 +69,10 @@ def make_env(args: DictConfig,is_training: bool,scale=False):
     if env_type=="atari":
         env = gym.make(env_name, frameskip=1)
         env = atari_wrap(env, episode_life=is_training, clip_rewards=is_training, frame_stack=args.frame_stack, scale=scale,frame_skip=args.frame_skip)
+    elif env_type=="mujoco":
+        env = make_mujoco_env(env_name,max_episode_length=args.max_episode_length)
+    elif env_type=="basic":
+        env = make_basic_env(env_name,max_episode_length=args.max_episode_length)
     else:
         raise NotImplementedError(f"Environment {env_name} is not supported yet.")
     
@@ -84,7 +88,7 @@ def make_env_func(args: DictConfig, is_training: bool,seed=None):
         if env_type=="atari":
             env = gym.make(env_name, frameskip=1)
             env = atari_wrap(env, 
-                             episode_life=is_training, 
+                             episode_life=True, 
                              clip_rewards=is_training, 
                              frame_stack=args.frame_stack, 
                              scale=args.scale,
@@ -147,46 +151,3 @@ if __name__ == "__main__":
             env.reset()
         last_info = info
 
-
-    exit()
-    env_num = 2
-    envs_func = [
-        make_easy_test
-        for i in range(env_num)
-    ]
-
-    envs = SubprocVecEnv(envs_func)
-    # envs = DummyVecEnv(envs_func)
-
-    obs = envs.reset()
-    i = 0
-    rewards = np.zeros(envs.num_envs)
-    saved = []
-    while True:
-        actions = [2 for _ in range(envs.num_envs)]
-        
-        obs, reward, terminated, info = envs.step(actions)
-        lives = [info[i]['lives'] for i in range(len(info))]
-        
-        rewards += rewards
-        
-        
-        for j in range(envs.num_envs):
-            if terminated[j]:
-                print(terminated,[kk['lives'] for kk in info])
-                input("continue")
-                for kk in range(envs.num_envs):
-                    envs.en[kk].unwrapped.reset()
-                actions = [2 for _ in range(envs.num_envs)]
-                obs, reward, terminated, info = envs.step(actions)
-                print(terminated,info)
-                exit()
-            # if info[j]['lives']==0:
-                
-            #     input("over now")
-            #     saved = np.array(saved)
-            #     np.save("states",saved) 
-            #     exit()
-    # saved = np.array(saved)
-    # np.save("states",saved)
-    

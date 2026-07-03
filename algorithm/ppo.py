@@ -54,20 +54,13 @@ class PPO(OnPolicyAlgorithm):
         self.use_value_clip = algo_args.use_value_clip
         self.value_clip = algo_args.value_clip
         self.log_clip_stabilize = algo_args.log_clip_stabilize
+        self.recompute_adv = algo_args.recompute_adv
         
 
     def _update_buffer(self, batch):
         self.buffer.add(batch)
 
-    def to_correct_device_tensor(self, input, device, dtype=torch.float32)-> torch.Tensor:
-        if isinstance(input, np.ndarray):
-            return torch.tensor(input,dtype=dtype,device=device)
-        elif isinstance(input, torch.Tensor):
-            input = input.to(device)
-            return input
-        else:
-            raise TypeError("input must be np array or torch tensor")
-
+   
     def _update_with_minibatch(self,states: torch.Tensor, actions: torch.Tensor, old_log_probs: torch.Tensor, advantages: torch.Tensor, returns: torch.Tensor, old_values: torch.Tensor):
         """
         states: torch.Tensor:(batch, state_dim)
@@ -142,55 +135,56 @@ class PPO(OnPolicyAlgorithm):
     
     def _update_policy(self):
         with Result("train") as result:
-            # get transitions
-            if self.collect_traj:
-                states, actions, masks, old_log_probs = self.traj_rollout.states, self.traj_rollout.actions, self.traj_rollout.masks, self.traj_rollout.log_probs
-                returns, advantages, old_values = self.compute_advantages_from_traj()
-            
-                states = states.reshape((-1,*states.shape[2:]))
-                actions = actions.reshape((-1,*actions.shape[2:]))
-                masks = masks.reshape((-1))
-                old_log_probs = old_log_probs.reshape((-1))
-                advantages = advantages.reshape((-1))
-                returns = returns.reshape((-1))
-                old_values = old_values.reshape((-1))
-
-                # remove the padding
-                masks = masks==1
-                states = states[masks]
-                actions = actions[masks]
-                old_log_probs = old_log_probs[masks]
-                advantages = advantages[masks]
-                returns = returns[masks]
-                old_values = old_values[masks]
-            else:
-                states, actions, old_log_probs = self.buffer.buffer['states'], self.buffer.buffer['actions'], self.buffer.buffer['log_probs']
-
-                returns, advantages, old_values = self.compute_advantages_from_rollout()
-                states = states.reshape((-1,*states.shape[2:]))
-                actions = actions.reshape((-1,*actions.shape[2:]))
-                old_log_probs = old_log_probs.reshape((-1))
-                advantages = advantages.reshape((-1))
-                returns = returns.reshape((-1))
-                old_values = old_values.reshape((-1))
+            for epoch in range(self.update_epochs):
+                if epoch==0 or self.recompute_adv:
+                    # calculate the advantages and returns for the whole buffer
+                    if self.collect_traj:
+                        states, actions, masks, old_log_probs = self.traj_rollout.states, self.traj_rollout.actions, self.traj_rollout.masks, self.traj_rollout.log_probs
+                        returns, advantages, old_values = self.compute_advantages_from_traj()
                     
+                        states = states.reshape((-1,*states.shape[2:]))
+                        actions = actions.reshape((-1,*actions.shape[2:]))
+                        masks = masks.reshape((-1))
+                        old_log_probs = old_log_probs.reshape((-1))
+                        advantages = advantages.reshape((-1))
+                        returns = returns.reshape((-1))
+                        old_values = old_values.reshape((-1))
+
+                        # remove the padding
+                        masks = masks==1
+                        states = states[masks]
+                        actions = actions[masks]
+                        old_log_probs = old_log_probs[masks]
+                        advantages = advantages[masks]
+                        returns = returns[masks]
+                        old_values = old_values[masks]
+                    else:
+                        states, actions, old_log_probs = self.buffer.buffer['states'], self.buffer.buffer['actions'], self.buffer.buffer['log_probs']
+
+                        returns, advantages, old_values = self.compute_advantages_from_rollout()
+                        states = states.reshape((-1,*states.shape[2:]))
+                        actions = actions.reshape((-1,*actions.shape[2:]))
+                        old_log_probs = old_log_probs.reshape((-1))
+                        advantages = advantages.reshape((-1))
+                        returns = returns.reshape((-1))
+                        old_values = old_values.reshape((-1))
+                            
 
 
 
-            states = torch.from_numpy(states).float().to(self.device)
-            actions = torch.from_numpy(actions).float().to(self.device)
-            old_log_probs = torch.from_numpy(old_log_probs).float().to(self.device)
-            advantages = torch.from_numpy(advantages).float().to(self.device)
-            returns = torch.from_numpy(returns).float().to(self.device)
-            old_values = torch.from_numpy(old_values).float().to(self.device)
+                    states = torch.from_numpy(states).float().to(self.device)
+                    actions = torch.from_numpy(actions).float().to(self.device)
+                    old_log_probs = torch.from_numpy(old_log_probs).float().to(self.device)
+                    advantages = torch.from_numpy(advantages).float().to(self.device)
+                    returns = torch.from_numpy(returns).float().to(self.device)
+                    old_values = torch.from_numpy(old_values).float().to(self.device)
 
-            if self.advan_norm:
-                advantages = (advantages-advantages.mean())/(advantages.std()+self._eps)
+                    if self.advan_norm:
+                        advantages = (advantages-advantages.mean())/(advantages.std()+self._eps)
 
-            batch_size = states.shape[0]
-            # here use the mini-batch update 
-            
-            for _ in range(self.update_epochs):
+                batch_size = states.shape[0]
+                # here use the mini-batch update 
+                
                 perm_idx = torch.randperm(batch_size, device=states.device)
                 for i in range(math.ceil(batch_size/self.minibatch_size)):
                     idx = perm_idx[i*self.minibatch_size:min((i+1)*self.minibatch_size,batch_size)]
@@ -203,14 +197,18 @@ class PPO(OnPolicyAlgorithm):
                     result_dict = self._update_with_minibatch(batch_states, batch_actions,batch_old_log_probs, batch_advantages, batch_returns, batch_old_values)
             
 
-            if self.lr_decay:
-                self.scheduler.step()
+            
 
 
         for k,v in result_dict.items():
             result.add_metric(k, v)
 
         result.add_metric("actor/surrogate_target", -result_dict['actor/actor_loss'])
+
+        if self.lr_decay:
+            self.scheduler.step()
+            current_lr = self.optimizer.param_groups[0]["lr"]
+            result.add_metric("actor/lr" ,current_lr)
 
         if not self.advan_norm:
             result.add_metric("actor/adv_mean", advantages.mean().item())

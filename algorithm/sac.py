@@ -59,10 +59,11 @@ class SAC(OffPolicyAlgorithm):
 
             rewards = torch.from_numpy(rewards).float().to(self.device).unsqueeze(1)
             dones = torch.from_numpy(dones).float().to(self.device).unsqueeze(1)
+            nstep_gamma = torch.from_numpy(batch['nstep_gamma']).float().to(self.device).unsqueeze(1)
 
             # calculate the q loss    
             with torch.no_grad():
-                target = rewards + (1 - dones) * self.gamma * self.agent.get_value(next_states,temperature=self.log_temp.detach().exp())
+                target = rewards + (1 - dones) * nstep_gamma * self.agent.get_value(next_states,temperature=self.log_temp.detach().exp())
                     
             q1, q2 = self.agent.get_double_q_function(states, actions)
             

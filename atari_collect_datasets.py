@@ -33,6 +33,7 @@ def get_args():
     # other args
     parser.add_argument("--model_file_pth", type=str, required=True)
     parser.add_argument("--collect_episodes", type=int, default=10)
+    
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--save_format", type=str, default="pkl", choices=FORMAT)
 

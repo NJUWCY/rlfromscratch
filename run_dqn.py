@@ -46,7 +46,9 @@ def main(cfg: DictConfig):
         buffer = ReplayBuffer(training_envs.observation_space, 
                               training_envs.action_space, 
                               args.algorithm.buffer_size//training_envs.num_envs, 
-                              training_envs.num_envs)
+                              training_envs.num_envs,
+                              gamma=args.gamma,
+                              nstep=args.algorithm.nstep)
     elif args.algorithm.buffer_name=="PrioritizedReplayBuffer":
         buffer = PrioritizedReplayBuffer(training_envs.observation_space, 
                                          training_envs.action_space, 
@@ -54,7 +56,9 @@ def main(cfg: DictConfig):
                                          training_envs.num_envs,
                                          alpha=args.algorithm.alpha,
                                          beta=args.algorithm.beta,
-                                         batch_norm=args.algorithm.weight_batch_norm)
+                                         batch_norm=args.algorithm.weight_batch_norm,
+                                         gamma=args.gamma,
+                                         nstep=args.algorithm.nstep)
     logging.info("Creating the Agent...")
     network = AtariDQNNetwork(training_envs.observation_space.shape, 
                               training_envs.action_space.n, 

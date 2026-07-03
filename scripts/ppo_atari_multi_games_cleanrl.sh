@@ -1,7 +1,28 @@
-python run_ppo_atari.py \
+set -e
+
+CONDA_BASE=${CONDA_BASE:-/home/ubuntu/wangchenyang/anaconda}
+CONDA_ENV=${CONDA_ENV:-rlzero}
+
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
+conda activate "${CONDA_ENV}"
+
+export SWANLAB_API_KEY=${SWANLAB_API_KEY:-yyKpLHGppV78RFW0p1PNQ}
+
+GAMES=(
+  BreakoutNoFrameskip-v4
+  SeaquestNoFrameskip-v4
+  QbertNoFrameskip-v4
+  SpaceInvadersNoFrameskip-v4
+  BeamRiderNoFrameskip-v4
+  PongNoFrameskip-v4
+  FreewayNoFrameskip-v4
+)
+
+for game in "${GAMES[@]}"; do
+    python run_ppo_atari.py \
     algorithm=ppo \
     env=atari \
-    env.name=BreakoutNoFrameskip-v4 \
+    env.name=${game} \
     env.num_training_envs=8 \
     total_epoch=10000 \
     interact_per_epoch=128 \
@@ -31,5 +52,4 @@ python run_ppo_atari.py \
     env.obs_norm=false \
     algorithm.test_epsilon=0.01 \
     "$@"
-
-
+done

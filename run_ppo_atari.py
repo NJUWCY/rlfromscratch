@@ -49,7 +49,7 @@ def main(cfg: DictConfig):
     if args.algorithm.buffer_name=="TrajectoryRollout":
         buffer = TrajectoryRollout(training_envs.observation_space,training_envs.action_space, args.algorithm.trajnum, args.env.max_episode_length)
     else:
-        buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.interact_per_epoch, training_envs.num_envs,onpolicy=args.algorithm.onpolicy)
+        buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.interact_per_epoch, training_envs.num_envs, onpolicy=args.algorithm.onpolicy)
 
     logging.info("Creating the Agent...")
     

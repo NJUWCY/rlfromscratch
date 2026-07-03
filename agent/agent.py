@@ -281,9 +281,8 @@ class DeterminiticA2CAgent(A2CAgent):
 
     def select_action(self, states:Union[np.ndarray, torch.Tensor], deterministic=False)->Tuple[np.ndarray, Dict]:
         """
-        select_action 的 Docstring
-        :param states: (batch, state_dim)
-        :return: actions: (batch, action_dim)
+        states: (batch, state_dim)
+        return: actions: (batch, action_dim)
         """
         states = to_correct_device_tensor(states, self.device)
         actions = self.actor.get_action(states, deterministic)

@@ -36,7 +36,7 @@ class TruncatedMonitor(gym.Wrapper[np.ndarray, int, np.ndarray, int]):
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         observation, reward, terminated, truncated, info = self.env.step(action)
-        if not terminated and truncated:
+        if (not terminated) and truncated:
             info['truncated'] = True 
             info['truncated_observation'] = observation
         return observation, reward, terminated, truncated, info

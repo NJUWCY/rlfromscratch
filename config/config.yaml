@@ -13,7 +13,8 @@ env:
   obs_norm: false
   scale: False
 
-
+algorithm:
+  test_epsilon: 0
 
 gamma: 0.99
 seed: 0

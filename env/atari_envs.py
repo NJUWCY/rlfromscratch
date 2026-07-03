@@ -23,19 +23,6 @@ def _parse_reset_result(reset_result: tuple) -> tuple[tuple, dict, bool]:
         return reset_result[0], reset_result[1], contains_info
     return reset_result, {}, contains_info
 
-def get_space_dtype(obs_space: gym.spaces.Box) -> type[np.floating] | type[np.integer]:
-    
-    obs_space_dtype: type[np.integer] | type[np.floating]
-    if np.issubdtype(obs_space.dtype, np.integer):
-        obs_space_dtype = np.integer
-    elif np.issubdtype(obs_space.dtype, np.floating):
-        obs_space_dtype = np.floating
-    else:
-        raise TypeError(
-            f"Unsupported observation space dtype: {obs_space.dtype}. "
-            f"This might be a bug in tianshou or gymnasium, please report it!",
-        )
-    return obs_space_dtype
 
 class ScaledFloatFrame(gym.ObservationWrapper):
     """Normalize observations to 0~1.
@@ -49,8 +36,9 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         assert isinstance(obs_space, gym.spaces.Box)
         low = np.min(obs_space.low)
         high = np.max(obs_space.high)
-        self.bias = low
-        self.scale = high - low
+        # Note: if don't convert to float32, then the uint8 will be converted to float64, in later tensor and buffer cast will be slower 11x
+        self.bias = np.float32(low)
+        self.scale = np.float32(high - low)
         self.observation_space = gym.spaces.Box(
             low=0.0,
             high=1.0,
@@ -170,3 +158,19 @@ def atari_wrap(env, episode_life=True, clip_rewards=True, frame_stack=4, scale=F
     env = TruncatedMonitor(env)
 
     return env
+
+if __name__=="__main__":
+    env = gym.make("BreakoutNoFrameskip-v4")
+    env = atari_wrap(env)
+    env.reset()
+    done = False 
+    i = 0
+    while True :
+        action = 0
+        ns, r, done,t, info = env.step(action)
+        i+=1 
+        if 'episode' in info:
+            break
+        if done:
+            env.reset()
+    print(info)

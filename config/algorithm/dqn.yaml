@@ -12,7 +12,7 @@ epsilon_schedular: linear
 epsilon_timestep: 1000000
 use_target: true
 target_update_method: hard
-target_update_interval: 10000
+target_update_interval: 2500
 target_update_tau: 0.005
 batch_size: 32
 
@@ -24,3 +24,7 @@ weight_batch_norm: false
 dueling_network: false
 conv_gradient_rescale: false 
 use_grad_clip: false
+
+test_epsilon: 0.001
+
+nstep: 1
