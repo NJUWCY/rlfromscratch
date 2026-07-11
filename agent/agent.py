@@ -241,8 +241,11 @@ class ProbabilityA2CAgent(A2CAgent):
         :return: actions: (batch, action_dim)
         """
         states = to_correct_device_tensor(states, self.device)
-        actions, log_probs = self.actor.get_action(states, deterministic)
-        return actions.detach().cpu().numpy(), {"log_probs":log_probs.detach().cpu().numpy()}
+        actions, log_probs, u = self.actor.get_action(states, deterministic)
+        action_infos = {"log_probs":log_probs.detach().cpu().numpy()}
+        if u is not None:
+            action_infos["u"] = u.detach().cpu().numpy()
+        return actions.detach().cpu().numpy(), action_infos
         
 
     def dist(self,states):
@@ -250,7 +253,7 @@ class ProbabilityA2CAgent(A2CAgent):
         states = to_correct_device_tensor(states, self.device)
         return self.actor.get_dist(states)
     
-    def log_prob(self, states:np.ndarray, actions:np.ndarray):
+    def log_prob(self, states:np.ndarray, actions:np.ndarray,u:np.ndarray=None):
         """
         states: np.ndarray:(batch, state_dim)
         actions: np.ndarray:(batch, action_dim)
@@ -258,6 +261,9 @@ class ProbabilityA2CAgent(A2CAgent):
         """
         # output: (batch,)
         states, actions = to_correct_device_tensor(states, self.device), to_correct_device_tensor(actions, self.device)
+        if u is not None:
+            u = to_correct_device_tensor(u, self.device)
+            return self.actor.get_log_prob(states, actions, u)
         return self.actor.get_log_prob(states, actions)
     
     def get_entropy(self, states:np.ndarray):
@@ -393,7 +399,7 @@ class SACAgent(ProbabilityA2CAgent):
         assert len(states.shape)<=2
         states = to_correct_device_tensor(states, self.device)
         
-        actions, log_probs = self.actor.get_action(states, deterministic=False)
+        actions, log_probs, u = self.actor.get_action(states, deterministic=False)
 
         log_probs = log_probs.unsqueeze(1)
         if self.use_target:

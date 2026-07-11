@@ -1,0 +1,21 @@
+{
+  "run_script": "run_td3.py",
+  "sweep_name": "TD3-search",
+  "fixed_overrides": [
+      "algorithm=td3",
+      "train_action_deterministic=false",
+      "env=mujoco",
+      "env.num_training_envs=1",
+      "save_interval=100000",
+      "test_interval=10000",
+      "train_log_interval=10000",
+      "total_epoch=1500000",
+      "algorithm.buffer_size=1000000",
+      "interact_per_epoch=1",
+      "start_train_step=25000"
+  ],
+  "search_space": {
+    "seed": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    "env.name": ["Ant-v5", "Hopper-v5", "HalfCheetah-v5", "Walker2d-v5","Humanoid-v5"]
+  }
+}

@@ -16,24 +16,28 @@ class ReplayBuffer:
                  num_envs: int, 
                  gamma:float=0.99,
                  nstep:int=1,
-                 onpolicy=False
+                 onpolicy=False,
+                 store_u=False
                  ):
         
         self.buffer_size = buffer_size
         action_dim = get_action_dim(action_space)
         self.num_envs = num_envs
+        # Note: Here we use the float32 to store the observations to avoid the precision issue and OpenMP parallel issue.
+        obs_dtype = np.float32 if observation_space.dtype == np.float64 else observation_space.dtype
         self.buffer_message = {
-            "states": {"shape":(num_envs, buffer_size, *observation_space.shape), "dtype":observation_space.dtype} ,
+            "states": {"shape":(num_envs, buffer_size, *observation_space.shape), "dtype":obs_dtype},
             "actions": {"shape": (self.num_envs, buffer_size, action_dim), "dtype": action_space.dtype},
             "dones": {"shape": (self.num_envs, buffer_size), "dtype": np.float32},
             "rewards": {"shape": (self.num_envs, buffer_size), "dtype": np.float32},
-            "next_states": {"shape": (self.num_envs, buffer_size, *observation_space.shape), "dtype": observation_space.dtype}
+            "next_states": {"shape": (self.num_envs, buffer_size, *observation_space.shape), "dtype": obs_dtype}
         }
         self.buffer_message['truncateds'] = {"shape": (self.num_envs, buffer_size), "dtype": np.float32}
         self.onpolicy = onpolicy
         if onpolicy:
             self.buffer_message['log_probs'] = {"shape": (self.num_envs, buffer_size), "dtype": np.float32}
-            
+            if store_u:
+                self.buffer_message['u'] = {"shape": (self.num_envs, buffer_size, action_dim), "dtype": np.float32}
         
         self.buffer = {}
     
@@ -263,10 +267,12 @@ class TrajectoryRollout:
     def __init__(self, observation_space: gym.spaces.Box, 
                  action_space: gym.spaces.Space,
                  trajnum: int,
-                 max_episode_length: int):
+                 max_episode_length: int,
+                 store_u=False):
         self.trajnum = trajnum 
         self.max_episode_length = max_episode_length
         self.action_dim = get_action_dim(action_space)
+        self.store_u = store_u
 
         self.observation_space = observation_space 
         self.action_space = action_space
@@ -281,6 +287,8 @@ class TrajectoryRollout:
         self.truncateds = np.zeros((trajnum, ), dtype=np.float32) # store the truncateds of each step for calculating the returns in the case of truncation
         self.pos = 0
         self.full = False 
+        if self.store_u:
+            self.u = np.zeros((trajnum, max_episode_length, self.action_dim), dtype=np.float32)
     
     def add_traj(self, traj_batch: dict):
         if self.full:
@@ -297,6 +305,8 @@ class TrajectoryRollout:
         self.masks[self.pos,-traj_length:] = 1
         self.last_states[self.pos] = ls
         self.truncateds[self.pos] = tr
+        if self.store_u:
+            self.u[self.pos,-traj_length:] = traj_batch['u']
         self.pos += 1
         if self.pos>=self.trajnum:
             self.full = True

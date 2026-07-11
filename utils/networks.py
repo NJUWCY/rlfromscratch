@@ -192,7 +192,7 @@ class DiscreteProbabilityActor(Actor):
         else:
             actions = dist.sample()
         log_probs = dist.log_prob(actions)
-        return actions.unsqueeze(1), log_probs
+        return actions.unsqueeze(1), log_probs, None
 
     
     def get_log_prob(self, states:torch.Tensor, actions:torch.Tensor):
@@ -283,7 +283,7 @@ class DiagGaussianActor(Actor):
         else:
             actions = dist.rsample()
         log_probs = dist.log_prob(actions)
-        return actions, log_probs
+        return actions, log_probs, None
 
     
     def get_log_prob(self, states:torch.Tensor, actions:torch.Tensor):
@@ -373,19 +373,25 @@ class TanhGaussianActor(Actor):
         # clamp the action within action range and avoid the log_prob=nan
         actions = torch.tanh(u)*self.scale + self.loc
         log_probs = raw_dist.log_prob(u) - torch.log(1-torch.tanh(u).pow(2)+EPS).sum(-1, keepdim=False)-torch.log(self.scale).sum()
-        return actions, log_probs
+        return actions, log_probs, u
     
     
-    def get_log_prob(self, states:torch.Tensor, actions:torch.Tensor):
+    def get_log_prob(self, states:torch.Tensor, actions:torch.Tensor, u:torch.Tensor=None):
         """
         states: torch.Tensor:(batch, state_dim)
         actions: torch.Tensor:(batch, action_dim)
         output: torch.Tensor:(batch,)
         """
-        actions = torch.clamp(actions, self.low+EPS, self.high-EPS) # this is to avoid log_prob=nan
-        dist = self.get_dist(states)
-        log_probs = dist.log_prob(actions)
-        return log_probs
+        if u is not None:
+            mu,std = self.forward(states)
+            raw_dist = Independent(Normal(mu,std), 1)
+            log_probs = raw_dist.log_prob(u) - torch.log(1-torch.tanh(u).pow(2)+EPS).sum(-1, keepdim=False)-torch.log(self.scale).sum()
+            return log_probs
+        else:
+            actions = torch.clamp(actions, self.low+EPS, self.high-EPS) # this is to avoid log_prob=nan
+            dist = self.get_dist(states)
+            log_probs = dist.log_prob(actions)
+            return log_probs
     
     def get_entropy(self, states:torch.Tensor):
         """

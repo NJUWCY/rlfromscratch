@@ -82,7 +82,7 @@ class SAC(OffPolicyAlgorithm):
 
             # update actor
             
-            rsample_actions, log_probs = self.agent.resample_action(states)
+            rsample_actions, log_probs, u = self.agent.resample_action(states)
 
             q = self.agent.get_q_function(states, rsample_actions).squeeze(1)
             actor_loss = (self.log_temp.detach().exp() * log_probs - q).mean()

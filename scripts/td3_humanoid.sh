@@ -9,15 +9,12 @@ conda activate "${CONDA_ENV}"
 export SWANLAB_API_KEY=${SWANLAB_API_KEY:-yyKpLHGppV78RFW0p1PNQ}
 
 ENVS=(
-   Ant-v5
-   Hopper-v5
-   HalfCheetah-v5
-   Walker2d-v5
+   Humanoid-v5
 )
 
-for seed in 1 2; do 
+for seed in 0 1 2; do 
     for env in "${ENVS[@]}"; do
-        python run_td3.py \
+        OMP_NUM_THREADS=1 python run_td3.py \
         algorithm=td3 \
         train_action_deterministic=false \
         env=mujoco \

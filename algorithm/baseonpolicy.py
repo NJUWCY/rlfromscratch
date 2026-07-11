@@ -76,6 +76,7 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
         traj_rewards = [[] for _ in range(self.num_training_envs)]
         traj_log_probs = [[] for _ in range(self.num_training_envs)]
         traj_dones = [[] for _ in range(self.num_training_envs)]
+        traj_u = [[] for _ in range(self.num_training_envs)]
 
         with Result("interact") as result:
             while not self.traj_rollout.full:
@@ -91,7 +92,9 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
                     traj_log_probs = [traj_log_probs[i]+[log_probs[i]] for i in range(self.num_training_envs)]
                     traj_dones = [traj_dones[i]+[terminateds[i]] for i in range(self.num_training_envs)]
                     # traj_truncateds = [traj_truncateds[i]+[infos[i].get("TimeLimit.truncated",False)] for i in range(self.num_training_envs)]
-
+                    if "u" in action_infos:
+                        u = action_infos['u']
+                        traj_u = [traj_u[i]+[u[i]] for i in range(self.num_training_envs)]
                     for i in range(self.num_training_envs):
                         if self.traj_rollout.full:
                             break
@@ -115,7 +118,8 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
                                     dones=np.array(traj_dones[i]),
                                     log_probs=np.array(traj_log_probs[i]),
                                     last_states=np.array(traj_last_observations),
-                                    truncateds=np.array(truncated)
+                                    truncateds=np.array(truncated),
+                                    u=np.array(traj_u[i]) if len(traj_u[i])>0 else None
                                 )
                             )
                             traj_states[i] = []

@@ -13,6 +13,9 @@ from utils.utils import get_flat_grad, conjugate_gradients, kl_product, get_mode
 from utils import OPTIMIZER_DICT
 from .baseonpolicy import OnPolicyAlgorithm
 
+
+
+
 class TRPO(OnPolicyAlgorithm):
 
     """Implementation for TRPO algorithm."""
@@ -34,6 +37,8 @@ class TRPO(OnPolicyAlgorithm):
         self.critic_batch_size = algo_args.critic_batch_size
         self.eigenvalue_reg = algo_args.eigenvalue_reg
         self.log_clip_stabilize = algo_args.log_clip_stabilize
+
+        self.rescale = algo_args.rescale
         
         
 
@@ -42,12 +47,20 @@ class TRPO(OnPolicyAlgorithm):
     
 
     def _update_policy(self):
+        
+
         with Result("train") as result:
             # get transitions
             if self.collect_traj:
                 states, actions, masks, old_log_probs = self.traj_rollout.states, self.traj_rollout.actions, self.traj_rollout.masks, self.traj_rollout.log_probs
                 returns, advantages, old_values = self.compute_advantages_from_traj()
-            
+
+                if self.rescale:
+                    u = self.traj_rollout.u
+                    u = u.reshape((-1, u.shape[-1]))
+                else:
+                    u = None
+
                 states = states.reshape((-1,*self.observation_space.shape))
                 actions = actions.reshape((-1,actions.shape[-1]))
                 masks = masks.reshape((-1))
@@ -62,10 +75,18 @@ class TRPO(OnPolicyAlgorithm):
                 old_log_probs = old_log_probs[masks]
                 advantages = advantages[masks]
                 returns = returns[masks]
+                if self.rescale:
+                    u = u[masks]    
             else:
                 states, actions, old_log_probs = self.buffer.buffer['states'], self.buffer.buffer['actions'], self.buffer.buffer['log_probs']
 
                 returns, advantages, old_values = self.compute_advantages_from_rollout()
+
+                if self.rescale:
+                    u = self.buffer.buffer['u']
+                    u = u.reshape((-1, u.shape[-1]))
+                else:
+                    u = None
                 states = states.reshape((-1,*self.observation_space.shape))
                 actions = actions.reshape((-1,actions.shape[-1]))
                 old_log_probs = old_log_probs.reshape((-1))
@@ -80,17 +101,15 @@ class TRPO(OnPolicyAlgorithm):
             advantages = torch.from_numpy(advantages).float().to(self.device)
             returns = torch.from_numpy(returns).float().to(self.device)
 
+            if self.rescale:
+                u = torch.from_numpy(u).float().to(self.device)
             if self.advan_norm:
                 advantages = (advantages-advantages.mean())/(advantages.std()+self._eps)
 
 
 
-            log_probs = self.agent.log_prob(states,actions)
-            if self.log_clip_stabilize:
-            # the max clamp here is to avoid inf in ratios and advantages, which will cause the nan in gradient
-                ratios = (torch.clamp(log_probs - old_log_probs,max=50)).exp()
-            else:
-                ratios = (log_probs - old_log_probs).exp()
+            log_probs = self.agent.log_prob(states,actions,u)
+            ratios = (log_probs - old_log_probs).exp()
 
             surrogate_target = torch.mean(ratios*advantages) 
 
@@ -126,11 +145,17 @@ class TRPO(OnPolicyAlgorithm):
                     new_parameter = flat_params + stepsize*gradient_direction
 
                     load_flat_parameters_to_model(new_parameter, self.agent.actor)
-                    new_dist = self.agent.dist(states)
-                    new_log_prob = new_dist.log_prob(actions)
-                    new_ratios = (new_log_prob-old_log_probs).exp()
+                    
+                    new_log_prob = self.agent.log_prob(states, actions, u)
+                    if self.log_clip_stabilize:
+                        # the max clamp here is to avoid inf in ratios and advantages, which will cause the nan in gradient
+                        new_ratios = (torch.clamp(new_log_prob - old_log_probs,max=50)).exp()
+                    else:
+                        new_ratios = (new_log_prob - old_log_probs).exp()
+                    
                     new_surrogate_target = torch.mean(new_ratios*advantages)
 
+                    new_dist = self.agent.dist(states)
                     new_kl = kl_divergence(old_dist, new_dist).mean()
                     
                     if new_surrogate_target>surrogate_target and new_kl <= self.delta:

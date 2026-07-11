@@ -88,6 +88,8 @@ class BaseAlgorithm(ABC):
 
         if self.onpolicy:
             batch['log_probs'] = np.zeros(shape=(self.num_training_envs, interact_steps_per_env),dtype=np.float32)
+            batch['u'] = np.zeros((self.num_training_envs, interact_steps_per_env, self.action_dim), dtype=np.float32)
+
         with Result("interact") as result:
             for step in range(interact_steps_per_env):
                 
@@ -107,6 +109,8 @@ class BaseAlgorithm(ABC):
                 batch['dones'][:,step] = terminateds
                 if self.onpolicy:
                     batch['log_probs'][:,step] = action_infos['log_probs']
+                    if "u" in action_infos:
+                        batch['u'][:,step] = action_infos['u']
 
                 for i in range(self.num_training_envs):
                     info = infos[i]

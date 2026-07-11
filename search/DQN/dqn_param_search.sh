@@ -1,0 +1,19 @@
+set -e
+
+cd /home/ubuntu/wangchenyang/RLfromscratch
+
+CONDA_BASE=${CONDA_BASE:-/home/ubuntu/wangchenyang/anaconda}
+CONDA_ENV=${CONDA_ENV:-sac}
+
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
+conda activate "${CONDA_ENV}"
+
+# export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=1
+export SWANLAB_API_KEY="${SWANLAB_API_KEY:-$(tr -d '\r\n' < /home/ubuntu/wangchenyang/RLfromscratch/api.txt)}"
+
+exec python parallel_search.py \
+  --config search/DQN/dqn_search.json \
+  --workers 2 \
+  --gpus 0,0 \
+  "$@"

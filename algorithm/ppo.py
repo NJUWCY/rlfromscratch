@@ -55,13 +55,15 @@ class PPO(OnPolicyAlgorithm):
         self.value_clip = algo_args.value_clip
         self.log_clip_stabilize = algo_args.log_clip_stabilize
         self.recompute_adv = algo_args.recompute_adv
+
+        self.rescale = algo_args.rescale
         
 
     def _update_buffer(self, batch):
         self.buffer.add(batch)
 
    
-    def _update_with_minibatch(self,states: torch.Tensor, actions: torch.Tensor, old_log_probs: torch.Tensor, advantages: torch.Tensor, returns: torch.Tensor, old_values: torch.Tensor):
+    def _update_with_minibatch(self,states: torch.Tensor, actions: torch.Tensor, old_log_probs: torch.Tensor, advantages: torch.Tensor, returns: torch.Tensor, old_values: torch.Tensor, u: torch.Tensor | None = None):
         """
         states: torch.Tensor:(batch, state_dim)
         actions: torch.Tensor:(batch, action_dim)
@@ -72,7 +74,7 @@ class PPO(OnPolicyAlgorithm):
         """
         result_dict = {}
 
-        log_probs = self.agent.log_prob(states,actions)
+        log_probs = self.agent.log_prob(states,actions, u)
 
         if self.log_clip_stabilize:
             # the max clamp here is to avoid inf in ratios and advantages, which will cause the nan in gradient
@@ -141,7 +143,12 @@ class PPO(OnPolicyAlgorithm):
                     if self.collect_traj:
                         states, actions, masks, old_log_probs = self.traj_rollout.states, self.traj_rollout.actions, self.traj_rollout.masks, self.traj_rollout.log_probs
                         returns, advantages, old_values = self.compute_advantages_from_traj()
-                    
+                        if self.rescale:
+                            u = self.traj_rollout.u
+                            u = u.reshape((-1, *u.shape[2:]))
+                        else:
+                            u = None
+
                         states = states.reshape((-1,*states.shape[2:]))
                         actions = actions.reshape((-1,*actions.shape[2:]))
                         masks = masks.reshape((-1))
@@ -158,10 +165,18 @@ class PPO(OnPolicyAlgorithm):
                         advantages = advantages[masks]
                         returns = returns[masks]
                         old_values = old_values[masks]
+                        if self.rescale:
+                            u = u[masks]
                     else:
                         states, actions, old_log_probs = self.buffer.buffer['states'], self.buffer.buffer['actions'], self.buffer.buffer['log_probs']
 
                         returns, advantages, old_values = self.compute_advantages_from_rollout()
+                        if self.rescale:
+                            u = self.buffer.buffer['u']
+                            u = u.reshape((-1, *u.shape[2:]))
+                        else:
+                            u = None
+
                         states = states.reshape((-1,*states.shape[2:]))
                         actions = actions.reshape((-1,*actions.shape[2:]))
                         old_log_probs = old_log_probs.reshape((-1))
@@ -179,6 +194,8 @@ class PPO(OnPolicyAlgorithm):
                     returns = torch.from_numpy(returns).float().to(self.device)
                     old_values = torch.from_numpy(old_values).float().to(self.device)
 
+                    if self.rescale:
+                        u = torch.from_numpy(u).float().to(self.device)
                     if self.advan_norm:
                         advantages = (advantages-advantages.mean())/(advantages.std()+self._eps)
 
@@ -194,7 +211,11 @@ class PPO(OnPolicyAlgorithm):
                     batch_advantages = advantages[idx]
                     batch_returns = returns[idx]
                     batch_old_values = old_values[idx]
-                    result_dict = self._update_with_minibatch(batch_states, batch_actions,batch_old_log_probs, batch_advantages, batch_returns, batch_old_values)
+                    if self.rescale:
+                        batch_u = u[idx]
+                    else:
+                        batch_u = None
+                    result_dict = self._update_with_minibatch(batch_states, batch_actions,batch_old_log_probs, batch_advantages, batch_returns, batch_old_values, batch_u)
             
 
             

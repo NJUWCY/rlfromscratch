@@ -9,12 +9,9 @@ conda activate /home/ubuntu/wangchenyang/anaconda/envs/sac
 export PYTHONUNBUFFERED=1
 export SWANLAB_API_KEY="${SWANLAB_API_KEY:-$(tr -d '\r\n' < /home/ubuntu/wangchenyang/RLfromscratch/api.txt)}"
 
-seeds=(1 2)
+seeds=(0 1 2)
 env_settings=(
-  "Hopper-v5 0.2"
-  "Walker2d-v5 0.2"
-  "HalfCheetah-v5 0.2"
-  "Ant-v5 0.2"
+  "Humanoid-v5 0.05"
 )
 
 for seed in "${seeds[@]}"; do
@@ -23,7 +20,7 @@ for seed in "${seeds[@]}"; do
     experiment_name="SAC-lr3e-4-${env_name}-seed-${seed}"
 
     echo "Running ${experiment_name}  init_temp=${init_temp}"
-    python run_sac.py \
+    OMP_NUM_THREADS=1 python run_sac.py \
       algorithm=sac \
       train_action_deterministic=false \
       env=mujoco \
