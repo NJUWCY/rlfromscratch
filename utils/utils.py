@@ -56,6 +56,24 @@ class RunningMeanStd:
         self.mean, self.var = new_mean, new_var
         self.count = total_count
 
+    def state_dict(self) -> dict:
+        """Return a picklable dict of all internal state."""
+        return {
+            "mean": self.mean,
+            "var": self.var,
+            "count": self.count,
+            "clip_max": self.clip_max,
+            "eps": self.eps,
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        """Restore internal state produced by `state_dict`."""
+        self.mean = state["mean"]
+        self.var = state["var"]
+        self.count = state["count"]
+        self.clip_max = state["clip_max"]
+        self.eps = state["eps"]
+
 
 
 

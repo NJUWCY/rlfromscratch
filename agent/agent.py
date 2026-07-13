@@ -70,7 +70,7 @@ class AgentBase(nn.Module, ABC):
         
 
 class AtariDQNAgent(AgentBase):
-    _config_attrs = AgentBase._config_attrs + ("num_actions", "observation_shape")
+    _config_attrs = AgentBase._config_attrs
     def __init__(self, observation_space: Space, action_space: Space, device, network:AtariDQNNetwork, use_target=False, target_network=None, target_update_tau=0.005,target_update_method="hard"):
         super(AtariDQNAgent, self).__init__(observation_space, action_space, device)
         self.num_actions = action_space.n 
@@ -236,9 +236,8 @@ class ProbabilityA2CAgent(A2CAgent):
 
     def select_action(self, states:Union[np.ndarray, torch.Tensor], deterministic=False)->Tuple[np.ndarray, Dict]:
         """
-        select_action 的 Docstring
         :param states: (batch, state_dim)
-        :return: actions: (batch, action_dim)
+        :return: actions: (batch, action_dim), action_infos: {"log_probs": (batch,), "u": (batch, action_dim)}
         """
         states = to_correct_device_tensor(states, self.device)
         actions, log_probs, u = self.actor.get_action(states, deterministic)
@@ -479,7 +478,6 @@ class TD3Agent(DeterminiticA2CAgent):
     
     def select_action(self, states:Union[np.ndarray, torch.Tensor], deterministic=False)->Tuple[np.ndarray, Dict]:
         """
-        select_action 的 Docstring
         :param states: (batch, state_dim)
         :return: actions: (batch, action_dim)
         """

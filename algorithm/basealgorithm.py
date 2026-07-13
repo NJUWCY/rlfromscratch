@@ -4,7 +4,7 @@ import numpy as np
 from collections import deque
 import gymnasium as gym
 import torch 
-
+import pickle as pkl
 
 from logger.logger import Logger
 from memory.memory import ReplayBuffer, TrajectoryRollout
@@ -61,6 +61,8 @@ class BaseAlgorithm(ABC):
 
         self.onpolicy=args.algorithm.onpolicy
         self.test_epsilon = args.algorithm.test_epsilon
+
+        self.obs_rms_path = args.log_dir + "/obs_rms.pth"
 
     
     @abstractmethod
@@ -154,6 +156,14 @@ class BaseAlgorithm(ABC):
     def sace(self):
         pass
 
+    def save(self):
+        # only save the agent and obs_rms, which are used for inference not the training
+        self.agent.save(self.save_pth)
+        if self.args.env.obs_norm:
+            obs_rms = self.training_envs.get_obs_rms()
+            torch.save(obs_rms.state_dict(), self.obs_rms_path)
+
+
     def run(self):
         """
         run the training loop of the algorithm
@@ -176,7 +186,7 @@ class BaseAlgorithm(ABC):
                                
                               
             if self.save_condition(epoch):
-                self.agent.save(self.save_pth)
+                self.save()
 
 
 
