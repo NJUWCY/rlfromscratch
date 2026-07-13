@@ -224,9 +224,8 @@ def collect_expert_trajectories(
         else:
             with torch.no_grad():
                 action, _ = agent.select_action(agent_obs, deterministic=True)
-        next_observation, step_rewards, dones, infos = env.step(
-            to_useful_action(env.action_space, action_dim, action)
-        )
+        action = to_useful_action(env.action_space, action_dim, action)
+        next_observation, step_rewards, dones, infos = env.step(action)
 
         for i in range(num_envs):
             is_truncated = infos[i].get("truncated", False)

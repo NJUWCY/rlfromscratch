@@ -97,11 +97,11 @@ class BaseAlgorithm(ABC):
                 
                 if self.random_choose_action():
                     actions = np.array([[self.training_envs.action_space.sample()] for _ in range(self.num_training_envs)],dtype=self.training_envs.action_space.dtype)
-                    
                 else:
                     with torch.no_grad():
                         actions, action_infos = self.agent.select_action(self.observations, self.train_action_deterministic)
-                next_observations, rewards, terminateds, infos = self.training_envs.step(to_useful_action(self.action_space, self.action_dim, actions))
+                actions = to_useful_action(self.action_space, self.action_dim, actions)
+                next_observations, rewards, terminateds, infos = self.training_envs.step(actions)
                 
 
                 batch['states'][:,step] = self.observations

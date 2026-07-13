@@ -141,11 +141,24 @@ def build_expert_agent(
                 algorithm_config, "conv_gradient_rescale", False
             ),
         )
+        use_target = _config_value(algorithm_config, "use_target", False)
+        target_network = AtariDQNNetwork(
+            observation_space.shape,
+            action_space.n,
+            dueling_network=_config_value(
+                algorithm_config, "dueling_network", False
+            ),
+            conv_gradient_rescale=_config_value(
+                algorithm_config, "conv_gradient_rescale", False
+            ),
+        ) if use_target else None
         agent = AtariDQNAgent(
             observation_space,
             action_space,
             device,
             network=network,
+            use_target=use_target,
+            target_network=target_network,
         )
     elif algorithm_name == "PPO" and env_type == "atari":
         if not isinstance(action_space, gym.spaces.Discrete):
