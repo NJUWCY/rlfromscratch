@@ -11,9 +11,10 @@ conda activate "${CONDA_ENV}"
 # export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS=1
 export SWANLAB_API_KEY="${SWANLAB_API_KEY:-$(tr -d '\r\n' < /home/ubuntu/wangchenyang/RLfromscratch/api.txt)}"
+export TQDM_MININTERVAL=60
 
 exec python parallel_search.py \
   --config search/DQN/dqn_search.json \
-  --workers 2 \
-  --gpus 0,0 \
+  --workers 4 \
+  --gpus 0,0,0,0 \
   "$@"

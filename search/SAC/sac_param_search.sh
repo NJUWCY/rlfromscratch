@@ -14,6 +14,6 @@ export SWANLAB_API_KEY="${SWANLAB_API_KEY:-$(tr -d '\r\n' < /home/ubuntu/wangche
 
 exec python parallel_search.py \
   --config search/SAC/sac_search.json \
-  --workers 8 \
-  --gpus 0,0,0,0,1,1,1,1 \
+  --workers 6 \
+  --gpus 0,0,0,1,1,1 \
   "$@"
