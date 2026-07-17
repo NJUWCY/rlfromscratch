@@ -101,7 +101,7 @@ The following tables compare performance across mainstream RL libraries on MuJoC
 | Hopper-v5 | 3395.56 ± 50.64 | 3542.2 ± 51.5 | 2325.547 ± 1129.676 | ~3150 | 2310.46 ± 342.82 |
 | Walker2d-v5 | 4014.48 ± 362.61 | 5007.0 ± 251.5 | 3863.203 ± 254.347 | ~4250 | 3591.45 ± 911.33 |
 | Ant-v5 | 5150.34 ± 391.48 | 5850.2 ± 475.7 | 4615.791 ± 1354.111 | ~3980 | - |
-| Humanoid-v5 | - | 5488.5 ± 81.2 | - | - | 4996.29 ± 686.40 |
+| Humanoid-v5 | 5184.76 ± 273.78 | 5488.5 ± 81.2 | - | - | 4996.29 ± 686.40 |
 
 > Training logs: [WandB - SAC MuJoCo](https://wandb.ai/placeholder/rlfromscratch-sac-mujoco)
 
