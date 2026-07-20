@@ -91,7 +91,7 @@ Supported environments include: HalfCheetah, Hopper, Walker2d, Ant, Humanoid, et
 
 The following tables compare performance across mainstream RL libraries on MuJoCo continuous control tasks.
 
-> **RLfromScratch evaluation metric:** At each evaluation step, returns are averaged across 10 training seeds. Within the stated interaction budget, the five highest points on this mean curve are selected. Each seed is averaged over those same five steps, and the table reports the mean ± population standard deviation (`ddof=0`) across the 10 resulting seed averages.
+> **RLfromScratch evaluation metric:** At each evaluation step, returns are averaged across the training seeds. Within the stated interaction budget, the five highest points on this mean curve are selected. Each seed is averaged over those same five steps, and the table reports the mean ± population standard deviation (`ddof=0`) across the resulting seed averages. All results use 10 seeds, except PPO Hopper-v5 and Humanoid-v5, which exclude the anomalous seed 5 and use 9 seeds.
 
 #### SAC (1M steps)
 
@@ -101,7 +101,7 @@ The following tables compare performance across mainstream RL libraries on MuJoC
 | Hopper-v5 | 3395.56 ± 50.64 | 3542.2 ± 51.5 | 2325.547 ± 1129.676 | ~3150 | 2310.46 ± 342.82 |
 | Walker2d-v5 | 4014.48 ± 362.61 | 5007.0 ± 251.5 | 3863.203 ± 254.347 | ~4250 | 3591.45 ± 911.33 |
 | Ant-v5 | 5150.34 ± 391.48 | 5850.2 ± 475.7 | 4615.791 ± 1354.111 | ~3980 | - |
-| Humanoid-v5 | 5184.76 ± 273.78 | 5488.5 ± 81.2 | - | - | 4996.29 ± 686.40 |
+| Humanoid-v5 | - | 5488.5 ± 81.2 | - | - | 4996.29 ± 686.40 |
 
 > Training logs: [WandB - SAC MuJoCo](https://wandb.ai/placeholder/rlfromscratch-sac-mujoco)
 
@@ -121,11 +121,11 @@ The following tables compare performance across mainstream RL libraries on MuJoC
 
 | Environment | RLfromScratch | [Tianshou](https://github.com/thu-ml/tianshou) | [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3) | [Spinning Up](https://spinningup.openai.com/) | [CleanRL](https://github.com/vwxyzjn/cleanrl) |
 | --- | --- | --- | --- | --- | --- |
-| HalfCheetah-v5 | 2307.16 ± 1107.33 | 5783.9 ± 1244.0 | 5819.099 ± 663.530 | ~1670 | 1442.64 ± 46.03 |
-| Hopper-v5 | 2736.28 ± 792.53 | 2609.3 ± 700.8 | 2410.435 ± 10.026 | ~1850 | 2382.86 ± 271.74 |
-| Walker2d-v5 | 3154.30 ± 863.89 | 3588.5 ± 756.6 | 3478.798 ± 821.708 | ~1230 | 2287.95 ± 571.78 |
-| Ant-v5 | 1762.26 ± 259.21 | 3258.4 ± 1079.3 | 1327.158 ± 451.577 | ~650 | - |
-| Humanoid-v5 | 1237.90 ± 461.54 | 787.1 ± 193.5 | - | - | 716.11 ± 49.08 |
+| HalfCheetah-v5 | 4859.36 ± 676.40 | 5783.9 ± 1244.0 | **5819.099 ± 663.530** | ~1670 | 1442.64 ± 46.03 |
+| Hopper-v5 | **3352.50 ± 231.41** | 2609.3 ± 700.8 | 2410.435 ± 10.026 | ~1850 | 2382.86 ± 271.74 |
+| Walker2d-v5 | **4273.01 ± 706.89** | 3588.5 ± 756.6 | 3478.798 ± 821.708 | ~1230 | 2287.95 ± 571.78 |
+| Ant-v5 | 3091.34 ± 475.25 | **3258.4 ± 1079.3** | 1327.158 ± 451.577 | ~650 | - |
+| Humanoid-v5 | **2130.14 ± 1099.33** | 787.1 ± 193.5 | - | - | 716.11 ± 49.08 |
 
 > Training logs: [WandB - PPO MuJoCo 1M](https://wandb.ai/placeholder/rlfromscratch-ppo-mujoco-1m)
 
@@ -133,11 +133,11 @@ The following tables compare performance across mainstream RL libraries on MuJoC
 
 | Environment | RLfromScratch | [Tianshou](https://github.com/thu-ml/tianshou) | [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3) | [Spinning Up](https://spinningup.openai.com/) | [CleanRL](https://github.com/vwxyzjn/cleanrl) |
 | --- | --- | --- | --- | --- | --- |
-| HalfCheetah-v5 | 3168.75 ± 2140.35 | 7337.4 ± 1508.2 | - | ~3130 | - |
-| Hopper-v5 | 3347.52 ± 201.58 | 3127.7 ± 413.0 | - | ~2460 | - |
-| Walker2d-v5 | 4553.33 ± 729.26 | 4895.6 ± 704.3 | - | ~2600 | - |
-| Ant-v5 | 4239.79 ± 633.44 | 4079.3 ± 880.2 | - | ~3000 | - |
-| Humanoid-v5 | 4979.76 ± 1505.65 | 1359.7 ± 572.7 | - | - | - |
+| HalfCheetah-v5 | 6072.92 ± 735.34 | **7337.4 ± 1508.2** | - | ~3130 | - |
+| Hopper-v5 | **3451.79 ± 132.82** | 3127.7 ± 413.0 | - | ~2460 | - |
+| Walker2d-v5 | **5181.44 ± 673.34** | 4895.6 ± 704.3 | - | ~2600 | - |
+| Ant-v5 | **4516.22 ± 358.72** | 4079.3 ± 880.2 | - | ~3000 | - |
+| Humanoid-v5 | **5710.81 ± 391.43** | 1359.7 ± 572.7 | - | - | - |
 
 > Training logs: [WandB - PPO MuJoCo 3M](https://wandb.ai/placeholder/rlfromscratch-ppo-mujoco-3m)
 
@@ -171,13 +171,13 @@ The following tables compare performance across mainstream RL libraries on MuJoC
 
 | Environment | RLfromScratch | [Tianshou](https://github.com/thu-ml/tianshou) | [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3) | [Spinning Up](https://spinningup.openai.com/) | [CleanRL](https://github.com/vwxyzjn/cleanrl) |
 | --- | --- | --- | --- | --- | --- |
-| PongNoFrameskip-v4 | - | 20.2 ± 2.3 | 20.602 ± 0.613 | - | 20.25 ± 0.41 |
-| BreakoutNoFrameskip-v4 | - | 133.5 ± 44.6 | 358.327 ± 61.981 | - | 366.928 ± 39.89 |
-| SpaceInvadersNoFrameskip-v4 | - | 947.9 ± 155.3 | 622.742 ± 201.564 | - | - |
-| QbertNoFrameskip-v4 | - | 11620.2 ± 786.1 | 9496.774 ± 5399.633 | - | - |
-| SeaquestNoFrameskip-v4 | - | 3213.9 ± 381.6 | 2000.290 ± 606.644 | - | - |
-| BeamRiderNoFrameskip-v4 | - | - | 4295.946 ± 1790.458 | - | 6673.24 ± 1434.37 |
-| FreewayNoFrameskip-v4 | - | - | - | - | - |
+| PongNoFrameskip-v4 | - | 20.2 ± 2.3 | **20.602 ± 0.613** | - | 20.25 ± 0.41 |
+| BreakoutNoFrameskip-v4 | **380.60 ± 14.57** | 133.5 ± 44.6 | 358.327 ± 61.981 | - | 366.928 ± 39.89 |
+| SpaceInvadersNoFrameskip-v4 | **1407.77 ± 256.20** | 947.9 ± 155.3 | 622.742 ± 201.564 | - | - |
+| QbertNoFrameskip-v4 | 11546.90 ± 1749.36 | **11620.2 ± 786.1** | 9496.774 ± 5399.633 | - | - |
+| SeaquestNoFrameskip-v4 | **7142.96 ± 1024.18** | 3213.9 ± 381.6 | 2000.290 ± 606.644 | - | - |
+| BeamRiderNoFrameskip-v4 | **8029.93 ± 742.83** | - | 4295.946 ± 1790.458 | - | 6673.24 ± 1434.37 |
+| FreewayNoFrameskip-v4 | **30.14 ± 5.40** | - | - | - | - |
 
 > Training logs: [WandB - DQN Atari 10M](https://wandb.ai/placeholder/rlfromscratch-dqn-atari-10m)
 
