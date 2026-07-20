@@ -230,7 +230,8 @@ class DiagGaussianActor(Actor):
                  clip_sigma=True,
                  hidden_sizes=[64, 64], 
                  activation=torch.nn.Tanh, 
-                 initialize=False):
+                 initialize=False,
+                 initial_log_sigma: float = 0.0):
         super(DiagGaussianActor, self).__init__(observation_space, action_space)
 
         self.mu = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize, 0.01)
@@ -239,7 +240,12 @@ class DiagGaussianActor(Actor):
         if state_dependent_std:
             self.log_sigma = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize,0.01)
         else:
-            self.log_sigma =  nn.Parameter(torch.zeros(size=(1,action_space.shape[0]))) 
+            self.log_sigma = nn.Parameter(
+                torch.full(
+                    size=(1, action_space.shape[0]),
+                    fill_value=float(initial_log_sigma),
+                )
+            )
         self.clip_sigma = clip_sigma
         self.device = device
         self.low, self.high = torch.tensor(self.action_space.low,device=self.device), torch.tensor(self.action_space.high, device=self.device)
@@ -313,7 +319,8 @@ class TanhGaussianActor(Actor):
                  clip_sigma=True, 
                  hidden_sizes=[64, 64], 
                  activation=torch.nn.Tanh, 
-                 initialize=False):
+                 initialize=False,
+                 initial_log_sigma:float=0.0):
         super(TanhGaussianActor, self).__init__(observation_space, action_space)
 
         self.mu = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize, 0.01)
@@ -322,7 +329,12 @@ class TanhGaussianActor(Actor):
         if state_dependent_std:
             self.log_sigma = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize,0.01)
         else:
-            self.log_sigma =  nn.Parameter(torch.zeros(size=(1,action_space.shape[0]))) 
+            self.log_sigma = nn.Parameter(
+                torch.full(
+                    size=(1, action_space.shape[0]),
+                    fill_value=float(initial_log_sigma),
+                )                                                   ##
+            )
         self.clip_sigma = clip_sigma
         self.device = device
 

@@ -58,7 +58,8 @@ def main(cfg: DictConfig):
             state_dependent_std=args.algorithm.state_dependent_std,
             hidden_sizes=args.algorithm.hidden_sizes, 
             activation=torch.nn.Tanh,
-            initialize=args.algorithm.initialize
+            initialize=args.algorithm.initialize,
+            initial_log_sigma=args.algorithm.initial_log_sigma
         )
     else:
         if args.algorithm.action_bound_method == "tanh":
@@ -70,7 +71,8 @@ def main(cfg: DictConfig):
                 state_dependent_std=args.algorithm.state_dependent_std,
                 hidden_sizes=args.algorithm.hidden_sizes, 
                 activation=torch.nn.Tanh,
-                initialize=args.algorithm.initialize
+                initialize=args.algorithm.initialize,
+                initial_log_sigma=args.algorithm.initial_log_sigma
             )
         else:
             raise ValueError(f"Action bound method {args.algorithm.action_bound_method} not supported")
