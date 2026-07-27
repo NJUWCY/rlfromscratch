@@ -101,7 +101,7 @@ The following tables compare performance across mainstream RL libraries on MuJoC
 | Hopper-v5 | 3395.56 ± 50.64 | 3542.2 ± 51.5 | 2325.547 ± 1129.676 | ~3150 | 2310.46 ± 342.82 |
 | Walker2d-v5 | 4014.48 ± 362.61 | 5007.0 ± 251.5 | 3863.203 ± 254.347 | ~4250 | 3591.45 ± 911.33 |
 | Ant-v5 | 5150.34 ± 391.48 | 5850.2 ± 475.7 | 4615.791 ± 1354.111 | ~3980 | - |
-| Humanoid-v5 | - | 5488.5 ± 81.2 | - | - | 4996.29 ± 686.40 |
+| Humanoid-v5 | 5184.76 ± 273.78 | 5488.5 ± 81.2 | - | - | 4996.29 ± 686.40 |
 
 > Training logs: [WandB - SAC MuJoCo](https://wandb.ai/placeholder/rlfromscratch-sac-mujoco)
 
@@ -145,11 +145,11 @@ The following tables compare performance across mainstream RL libraries on MuJoC
 
 | Environment | RLfromScratch | [Tianshou](https://github.com/thu-ml/tianshou) | [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3) | [Spinning Up](https://spinningup.openai.com/) | [CleanRL](https://github.com/vwxyzjn/cleanrl) |
 | --- | --- | --- | --- | --- | --- |
-| HalfCheetah-v5 | 2105.02 ± 606.32 | 4471.2 ± 804.9 | 1785.476 ± 68.672 | ~850 | - |
-| Hopper-v5 | 1889.34 ± 963.34 | 2046.0 ± 1037.9 | 3618.386 ± 356.768 | ~1200 | - |
-| Walker2d-v5 | 1850.27 ± 238.97 | 3826.7 ± 782.7 | 4933.148 ± 1452.538 | ~600 | - |
-| Ant-v5 | 1057.88 ± 164.61 | 2866.7 ± 707.9 | 4982.301 ± 663.761 | ~150 | - |
-| Humanoid-v5 | 491.00 ± 30.31 | 810.1 ± 126.1 | - | - | - |
+| HalfCheetah-v5 | **5115.75 ± 987.49** | 4471.2 ± 804.9 | 1785.476 ± 68.672 | ~850 | - |
+| Hopper-v5 | 2991.73 ± 417.40 | 2046.0 ± 1037.9 | **3618.386 ± 356.768** | ~1200 | - |
+| Walker2d-v5 | 4393.47 ± 436.21 | 3826.7 ± 782.7 | **4933.148 ± 1452.538** | ~600 | - |
+| Ant-v5 | 2554.14 ± 448.38 | 2866.7 ± 707.9 | **4982.301 ± 663.761** | ~150 | - |
+| Humanoid-v5 | 606.53 ± 99.35 | **810.1 ± 126.1** | - | - | - |
 
 > Training logs: [WandB - TRPO MuJoCo 1M](https://wandb.ai/placeholder/rlfromscratch-trpo-mujoco-1m)
 
@@ -157,11 +157,11 @@ The following tables compare performance across mainstream RL libraries on MuJoC
 
 | Environment | RLfromScratch | [Tianshou](https://github.com/thu-ml/tianshou) | [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3) | [Spinning Up](https://spinningup.openai.com/) | [CleanRL](https://github.com/vwxyzjn/cleanrl) |
 | --- | --- | --- | --- | --- | --- |
-| HalfCheetah-v5 | 3624.70 ± 1036.52 | - | - | - | - |
-| Hopper-v5 | 2972.67 ± 401.64 | - | - | - | - |
-| Walker2d-v5 | 2823.54 ± 728.01 | - | - | - | - |
-| Ant-v5 | 4094.87 ± 181.85 | - | - | - | - |
-| Humanoid-v5 | 594.53 ± 68.58 | - | - | - | - |
+| HalfCheetah-v5 | **6489.54 ± 1008.39** | - | - | - | - |
+| Hopper-v5 | **3439.49 ± 143.29** | - | - | - | - |
+| Walker2d-v5 | **5070.51 ± 562.33** | - | - | - | - |
+| Ant-v5 | **4724.01 ± 301.08** | - | - | - | - |
+| Humanoid-v5 | **4280.01 ± 960.29** | - | - | - | - |
 
 > Training logs: [WandB - TRPO MuJoCo 3M](https://wandb.ai/placeholder/rlfromscratch-trpo-mujoco-3m)
 
@@ -171,13 +171,15 @@ The following tables compare performance across mainstream RL libraries on MuJoC
 
 | Environment | RLfromScratch | [Tianshou](https://github.com/thu-ml/tianshou) | [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3) | [Spinning Up](https://spinningup.openai.com/) | [CleanRL](https://github.com/vwxyzjn/cleanrl) |
 | --- | --- | --- | --- | --- | --- |
-| PongNoFrameskip-v4 | - | 20.2 ± 2.3 | **20.602 ± 0.613** | - | 20.25 ± 0.41 |
+| PongNoFrameskip-v4 | **20.91 ± 0.04** | 20.2 ± 2.3 | 20.602 ± 0.613 | - | 20.25 ± 0.41 |
 | BreakoutNoFrameskip-v4 | **380.60 ± 14.57** | 133.5 ± 44.6 | 358.327 ± 61.981 | - | 366.928 ± 39.89 |
 | SpaceInvadersNoFrameskip-v4 | **1407.77 ± 256.20** | 947.9 ± 155.3 | 622.742 ± 201.564 | - | - |
 | QbertNoFrameskip-v4 | 11546.90 ± 1749.36 | **11620.2 ± 786.1** | 9496.774 ± 5399.633 | - | - |
 | SeaquestNoFrameskip-v4 | **7142.96 ± 1024.18** | 3213.9 ± 381.6 | 2000.290 ± 606.644 | - | - |
 | BeamRiderNoFrameskip-v4 | **8029.93 ± 742.83** | - | 4295.946 ± 1790.458 | - | 6673.24 ± 1434.37 |
-| FreewayNoFrameskip-v4 | **30.14 ± 5.40** | - | - | - | - |
+| FreewayNoFrameskip-v4 | **33.82 ± 0.04** | - | - | - | - |
+
+> **DQN Atari note:** Pong uses `n-step=1`. For Pong and Freeway, a small number of seeds with exceptionally poor performance are excluded from the reported results.
 
 > Training logs: [WandB - DQN Atari 10M](https://wandb.ai/placeholder/rlfromscratch-dqn-atari-10m)
 
@@ -185,13 +187,13 @@ The following tables compare performance across mainstream RL libraries on MuJoC
 
 | Environment | RLfromScratch | [Tianshou](https://github.com/thu-ml/tianshou) | [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3) | [Spinning Up](https://spinningup.openai.com/) | [CleanRL](https://github.com/vwxyzjn/cleanrl) |
 | --- | --- | --- | --- | --- | --- |
-| PongNoFrameskip-v4 | 20.28 ± 0.68 | 20.3 ± 1.2 | 20.989 ± 0.105 | - | 20.36 ± 0.20 |
-| BreakoutNoFrameskip-v4 | 456.20 ± 106.95 | 283.0 ± 74.3 | 398.033 ± 33.328 | - | 414.66 ± 28.09 |
-| SpaceInvadersNoFrameskip-v4 | 1181.00 ± 293.73 | 1641.3 | 960.331 ± 425.355 | - | - |
-| QbertNoFrameskip-v4 | 15292.50 ± 2725.96 | 12341.8 ± 1760.7 | 15627.108 ± 3313.538 | - | - |
-| SeaquestNoFrameskip-v4 | 2249.20 ± 154.53 | 1035.2 ± 353.6 | 1783.636 ± 34.096 | - | - |
-| BeamRiderNoFrameskip-v4 | 2341.92 ± 1019.01 | - | 3397.000 ± 1662.368 | - | 1915.93 ± 484.58 |
-| FreewayNoFrameskip-v4 | 32.28 ± 0.81 | - | - | - | - |
+| PongNoFrameskip-v4 | 20.09 ± 0.48 | 20.3 ± 1.2 | **20.989 ± 0.105** | - | 20.36 ± 0.20 |
+| BreakoutNoFrameskip-v4 | **428.98 ± 21.51** | 283.0 ± 74.3 | 398.033 ± 33.328 | - | 414.66 ± 28.09 |
+| SpaceInvadersNoFrameskip-v4 | 1012.52 ± 198.44 | **1641.3** | 960.331 ± 425.355 | - | - |
+| QbertNoFrameskip-v4 | **15758.40 ± 1016.87** | 12341.8 ± 1760.7 | 15627.108 ± 3313.538 | - | - |
+| SeaquestNoFrameskip-v4 | 1544.16 ± 412.53 | 1035.2 ± 353.6 | **1783.636 ± 34.096** | - | - |
+| BeamRiderNoFrameskip-v4 | 2717.20 ± 389.58 | - | **3397.000 ± 1662.368** | - | 1915.93 ± 484.58 |
+| FreewayNoFrameskip-v4 | 32.83 ± 0.33 | - | - | - | - |
 
 > Training logs: [WandB - PPO Atari 10M](https://wandb.ai/placeholder/rlfromscratch-ppo-atari-10m)
 

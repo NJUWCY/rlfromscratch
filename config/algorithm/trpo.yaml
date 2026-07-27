@@ -12,12 +12,14 @@ gamma: 0.99
 optimizer: Adam
 hidden_sizes: [64, 64]
 state_dependent_std: false
+initial_log_sigma: 0.0
 initialize: false
 delta: 0.01
 linesearch_coeffient: 0.5
 backtracking_steps: 10
 cg_steps: 10
 eigenvalue_reg: 0.1
+lr_decay: false
 
 critic_update_steps: 3
 critic_batch_size: 256

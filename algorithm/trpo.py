@@ -39,6 +39,13 @@ class TRPO(OnPolicyAlgorithm):
         self.log_clip_stabilize = algo_args.log_clip_stabilize
 
         self.rescale = algo_args.rescale
+        self.lr_decay = algo_args.lr_decay
+
+        if self.lr_decay:
+            self.scheduler = torch.optim.lr_scheduler.LambdaLR(
+                self.optimizer,
+                lr_lambda=lambda step: max(1.0 - step / self.total_update_steps, 0.0)
+            )
         
         
 
@@ -186,6 +193,7 @@ class TRPO(OnPolicyAlgorithm):
                     self.optimizer.zero_grad()
                     value_loss.backward()
                     self.optimizer.step()
+                    
 
             # # TODO:do the batch update or the epoch update
             # batch_size = states.shape[0]
@@ -200,6 +208,10 @@ class TRPO(OnPolicyAlgorithm):
             #     value_loss.backward()
             #     self.optimizer.step()
 
+        if self.lr_decay:
+            self.scheduler.step()
+            current_lr = self.optimizer.param_groups[0]["lr"]
+            result.add_metric("critic/lr" ,current_lr)
 
         self.gradient_step += 1
 

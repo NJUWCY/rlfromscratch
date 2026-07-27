@@ -105,7 +105,10 @@ class BaseAlgorithm(ABC):
                 
 
                 batch['states'][:,step] = self.observations
-                batch['actions'][:,step] = actions
+                if isinstance(self.action_space, gym.spaces.Discrete):
+                    batch['actions'][:,step] = actions.reshape(-1,1)
+                else:
+                    batch['actions'][:,step] = actions
                 batch['rewards'][:,step] = rewards
                 batch['next_states'][:,step] = next_observations 
                 batch['dones'][:,step] = terminateds
@@ -152,9 +155,6 @@ class BaseAlgorithm(ABC):
         
     def start_train(self):
         return True
-    
-    def sace(self):
-        pass
 
     def save(self):
         # only save the agent and obs_rms, which are used for inference not the training
