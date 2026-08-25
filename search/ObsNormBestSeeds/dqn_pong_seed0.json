@@ -1,0 +1,33 @@
+{
+  "run_script": "run_dqn.py",
+  "sweep_name": "DQN-best-seed",
+  "fixed_overrides": [
+    "algorithm=dqn",
+    "train_action_deterministic=true",
+    "env=atari",
+    "env.num_training_envs=1",
+    "save_interval=100000",
+    "test_interval=10000",
+    "train_log_interval=5000",
+    "total_epoch=2500000",
+    "start_train_step=20000",
+    "algorithm.buffer_size=1000000",
+    "algorithm.huber_loss=true",
+    "algorithm.end_epsilon=0.01",
+    "algorithm.target_update_interval=2000",
+    "algorithm.target_update_tau=1",
+    "algorithm.epsilon_timestep=250000",
+    "experiment_name=DQN-${env.name}"
+  ],
+  "search_space": {
+    "seed": [
+      0
+    ],
+    "env.name": [
+      "PongNoFrameskip-v4"
+    ],
+    "algorithm.nstep": [
+      3
+    ]
+  }
+}

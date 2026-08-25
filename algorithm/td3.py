@@ -7,16 +7,17 @@ import numpy as np
 from agent import AgentBase, A2CAgent, TD3Agent
 from utils import OPTIMIZER_DICT
 import math
-
+from typing import Dict, Any
+from omegaconf import DictConfig
 
 class TD3(OffPolicyAlgorithm):
     
     """DQN algorithm implementation."""
 
-    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: TD3Agent, logger: Logger, device, save_pth: str,best_pth: str, args):
-        super(TD3, self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth,best_pth, args)
+    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: TD3Agent, logger: Logger, device, args: DictConfig, rl_args: DictConfig):
+        super(TD3, self).__init__(training_envs, testing_envs, buffer, agent, logger, device, args, rl_args)
         
-        algo_args = args.algorithm
+        algo_args = rl_args
 
         self.critic_lr = algo_args.critic_lr
         self.actor_lr = algo_args.actor_lr
@@ -99,4 +100,3 @@ class TD3(OffPolicyAlgorithm):
         
         self.gradient_step += 1
         return result
-

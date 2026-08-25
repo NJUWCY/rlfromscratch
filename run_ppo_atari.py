@@ -43,13 +43,14 @@ def main(cfg: DictConfig):
     logging.info("Creating the Logger...")
     runtime = datetime.now()
     runtime = runtime.strftime("%Y-%m-%d %H:%M:%S")
-    logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args.algorithm, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
+    logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
 
+    rl_algorithm = args.algorithm
     logging.info("Creating the ReplayBuffer...")
-    if args.algorithm.buffer_name=="TrajectoryRollout":
-        buffer = TrajectoryRollout(training_envs.observation_space,training_envs.action_space, args.algorithm.trajnum, args.env.max_episode_length)
+    if rl_algorithm.buffer_name=="TrajectoryRollout":
+        buffer = TrajectoryRollout(training_envs.observation_space,training_envs.action_space, rl_algorithm.trajnum, args.env.max_episode_length)
     else:
-        buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.interact_per_epoch, training_envs.num_envs, onpolicy=args.algorithm.onpolicy)
+        buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.interact_per_epoch, training_envs.num_envs, onpolicy=rl_algorithm.onpolicy)
 
     logging.info("Creating the Agent...")
     
@@ -58,19 +59,19 @@ def main(cfg: DictConfig):
     encoder = AtariCNNEncoder(
         training_envs.observation_space.shape, 
         embedding_dim, 
-        initialize=args.algorithm.initialize)
+        initialize=rl_algorithm.initialize)
 
     actor = DiscreteProbabilityActor(
         training_envs.observation_space, 
         training_envs.action_space, 
         encoder,
-        initialize=args.algorithm.initialize)
+        initialize=rl_algorithm.initialize)
     
     critic = DiscreteVFunction(
         training_envs.observation_space, 
         training_envs.action_space, 
         encoder,
-        initialize=args.algorithm.initialize
+        initialize=rl_algorithm.initialize
     )
     
     # TODO: actor and critic share the encoder, which may cause repetition in agent.state_dict()
@@ -84,9 +85,7 @@ def main(cfg: DictConfig):
     algorithm = ALGORITHM_DICT[args.algorithm.name](training_envs=training_envs, testing_envs=None, 
                                                buffer=buffer, agent=agent, 
                                                logger=logger, device=device, 
-                                               save_pth=os.path.join(args.log_dir, "newest_model.pth"), 
-                                               best_pth=os.path.join(args.log_dir, "best_model.pth"),
-                                               args=args)
+                                               args=args, rl_args=rl_algorithm)
 
     logging.info("Begin Training...")
     algorithm.run()

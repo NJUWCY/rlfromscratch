@@ -1,4 +1,7 @@
 
+from pathlib import Path
+
+import h5py
 import numpy as np
 import random
 import gymnasium as gym 
@@ -258,11 +261,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.max_td = 1.
     
 
-    
-
-        
-
-
 class TrajectoryRollout:
     def __init__(self, observation_space: gym.spaces.Box, 
                  action_space: gym.spaces.Space,
@@ -329,203 +327,219 @@ class TrajectoryRollout:
         self.truncateds = np.zeros((trajnum, ), dtype=np.float32) # store the truncateds of each step for calculating the returns in the case of truncation
         self.pos = 0
         self.full = False 
-    
+
+
+class ExpertDataset(ReplayBuffer):
+    def __init__(self,file_path: str,
+                 observation_space: gym.spaces.Box,
+                 action_space: gym.spaces.Space,
+                 trajectory_num: int, 
+                 subsample_frequency:int, 
+                 gamma:float=0.99,
+                 nstep:int=1,
+                 ):
+        path = Path(file_path)
+        suffix = path.suffix.lower()
+        data: dict[str, np.ndarray] = {}
+        if suffix == ".npz":
+            with np.load(path, allow_pickle=False) as npz:
+                data = {key: np.asarray(npz[key]) for key in npz.files}
+        elif suffix in {".h5", ".hdf5"}:
+            with h5py.File(path, "r") as f:
+                def _collect(name, obj):
+                    if isinstance(obj, h5py.Dataset):
+                        data[name] = np.asarray(obj[()])
+                f.visititems(_collect)
+        else:
+            raise ValueError(
+                f"Unsupported expert dataset format: {suffix}. "
+                "Expected .npz, .h5, or .hdf5."
+            )
+        if not data:
+            raise ValueError(f"Expert dataset is empty: {path}")
+
+        self.subsample_frequency = subsample_frequency
+        self.trajectory_num = trajectory_num
+
+        for k, v in data.items():
+            print(f"loaded expert dataset {k} with shape {v.shape}")
+
+        if subsample_frequency <= 0:
+            raise ValueError(f"subsample_frequency must be positive, got {subsample_frequency}")
+        if trajectory_num <= 0:
+            raise ValueError(f"trajectory_num must be positive, got {trajectory_num}")
+
+        all_trajectories = self._split_trajectories(data)
+        if len(all_trajectories) == 0:
+            raise ValueError(f"No trajectories found in expert dataset: {path}")
+        if trajectory_num > len(all_trajectories):
+            raise ValueError(
+                f"Requested trajectory_num={trajectory_num}, but only "
+                f"{len(all_trajectories)} trajectories are available."
+            )
+
+        selected_idx = np.random.choice(
+            len(all_trajectories), size=trajectory_num, replace=False
+        )
+        # list of trajectory_num dicts; each dict holds subsampled transitions
+        trajectories: list[dict[str, np.ndarray]] = [
+            {key: value[::subsample_frequency] for key, value in all_trajectories[i].items()}
+            for i in selected_idx
+        ]
+
+        for i, (traj_idx, traj) in enumerate(zip(selected_idx, trajectories)):
+            if "rewards" not in traj:
+                raise KeyError("Expert trajectories must contain rewards to compute returns.")
+            rewards = np.asarray(traj["rewards"], dtype=np.float64).reshape(-1)
+            # Undiscounted episode return; also report discounted return with gamma.
+            undiscounted_return = float(rewards.sum())
+            discounts = gamma ** np.arange(rewards.shape[0], dtype=np.float64)
+            discounted_return = float((discounts * rewards).sum())
+            print(
+                f"sampled expert trajectory {i}: original_idx={int(traj_idx)}, "
+                f"length={rewards.shape[0]}, "
+                f"return={undiscounted_return:.4f}, "
+                f"discounted_return(gamma={gamma})={discounted_return:.4f}"
+            )
+
+        lengths = [len(traj['actions']) for traj in trajectories]
+        self.episode_ends = np.cumsum(lengths) - 1
+
+        total_length = sum(lengths)
+
+        num_envs = 1
+        buffer_size = total_length
+
+        super(ExpertDataset, self).__init__(
+            observation_space, action_space, buffer_size, num_envs, gamma, nstep, onpolicy=True, store_u=False
+        )
+
+        # Merge subsampled trajectories into the flat ReplayBuffer layout:
+        # buffer[key].shape == (num_envs, buffer_size, ...)
+        merged = {
+            key: np.concatenate([traj[key] for traj in trajectories], axis=0)
+            for key in trajectories[0]
+        }
+
+        def _pick(*candidates: str) -> np.ndarray | None:
+            for name in candidates:
+                if name in merged:
+                    return merged[name]
+            return None
+
+        observations = _pick("observations", "states")
+        next_observations = _pick("next_observations", "next_states")
+        actions = _pick("actions")
+        rewards = _pick("rewards")
+        terminals = _pick("terminals", "dones")
+        timeouts = _pick("timeouts", "truncateds")
+        log_probs = _pick(
+            "infos/action_log_probs",
+            "infos__action_log_probs",
+            "log_probs",
+            "action_log_probs",
+        )
+
+        if observations is None or actions is None or rewards is None:
+            raise KeyError(
+                "Expert trajectories must contain observations/states, actions, and rewards."
+            )
+        if next_observations is None:
+            raise KeyError("Expert trajectories must contain next_observations/next_states.")
+        if terminals is None:
+            terminals = np.zeros(total_length, dtype=np.float32)
+        if timeouts is None:
+            timeouts = np.zeros(total_length, dtype=np.float32)
+
+        self.buffer["states"][0] = np.asarray(observations, dtype=self.buffer["states"].dtype)
+        self.buffer["next_states"][0] = np.asarray(
+            next_observations, dtype=self.buffer["next_states"].dtype
+        )
+        expert_actions = np.asarray(actions, dtype=self.buffer["actions"].dtype)
+        if expert_actions.ndim == 1:
+            expert_actions = expert_actions.reshape(-1, 1)
+        self.buffer["actions"][0] = expert_actions
+        self.buffer["rewards"][0] = np.asarray(rewards, dtype=np.float32).reshape(-1)
+        self.buffer["dones"][0] = np.asarray(terminals, dtype=np.float32).reshape(-1)
+        self.buffer["truncateds"][0] = np.asarray(timeouts, dtype=np.float32).reshape(-1)
+        if "log_probs" in self.buffer:
+            if log_probs is None:
+                self.buffer["log_probs"][0] = np.zeros(total_length, dtype=np.float32)
+            else:
+                self.buffer["log_probs"][0] = np.asarray(log_probs, dtype=np.float32).reshape(-1)
+
+        self.pos = total_length % self.buffer_size
+        self.full = total_length >= self.buffer_size
+        
+
+    @staticmethod
+    def _split_trajectories(data: dict[str, np.ndarray]) -> list[dict[str, np.ndarray]]:
+        """Split flat D4RL-style arrays into per-episode dicts via terminals/timeouts."""
+        if (
+            "episode_ends" not in data
+            and "terminals" not in data
+            and "timeouts" not in data
+        ):
+            raise KeyError(
+                "Expert dataset must contain 'episode_ends', "
+                "'terminals', or 'timeouts' to recover episode boundaries."
+            )
+
+        n = data["actions"].shape[0]
+        terminals = (
+            np.asarray(data["terminals"], dtype=np.bool_).reshape(-1)
+            if "terminals" in data
+            else np.zeros(n, dtype=np.bool_)
+        )
+        timeouts = (
+            np.asarray(data["timeouts"], dtype=np.bool_).reshape(-1)
+            if "timeouts" in data
+            else np.zeros(n, dtype=np.bool_)
+        )
+        if terminals.shape[0] != n or timeouts.shape[0] != n:
+            raise ValueError("terminals/timeouts length does not match dataset length.")
+
+        if "episode_ends" in data:
+            episode_end_mask = np.asarray(
+                data["episode_ends"],
+                dtype=np.bool_,
+            ).reshape(-1)
+
+            if episode_end_mask.shape[0] != n:
+                raise ValueError(
+                    "episode_ends length does not match dataset length."
+                )
+
+            if episode_end_mask.size == 0 or not episode_end_mask[-1]:
+                raise ValueError(
+                    "The last transition must be marked as an episode end."
+                )
+        else:
+            episode_end_mask = terminals | timeouts
+
+        episode_ends = np.flatnonzero(episode_end_mask)
+        
+        trajectories: list[dict[str, np.ndarray]] = []
+        start = 0
+        for end in episode_ends:
+            if end < start:
+                continue
+            trajectories.append({key: value[start : end + 1] for key, value in data.items() if key != "episode_ends"})
+            start = end + 1
+        # leftover steps without a terminal/timeout flag
+        if start < n:
+            trajectories.append({key: value[start:] for key, value in data.items() if key != "episode_ends"})
+        return trajectories
 
 
 
 
 if __name__ == "__main__":
-    import sys
-    sys.path.insert(0, "/home/ubuntu/wangchenyang/RLfromscratch")
-
-    obs_space = gym.spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
-    act_space = gym.spaces.Discrete(2)
-
-    passed, failed = 0, 0
-    def check(cond, msg):
-        global passed, failed
-        if cond:
-            passed += 1; print(f"  [PASS] {msg}")
-        else:
-            failed += 1; print(f"  [FAIL] {msg}")
-
-    # ====== Test 1: nstep=3, no done/truncated, normal case ======
-    print("=" * 60)
-    print("Test 1: nstep=3, continuous trajectory (no done/truncated)")
-    print("=" * 60)
-    gamma = 0.99
-    buf = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=3)
-    batch = {
-        "states": np.arange(10).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
-        "actions": np.zeros((1, 10, 1), dtype=np.int64),
-        "rewards": np.array([[1., 2., 3., 4., 5., 6., 7., 8., 9., 10.]], dtype=np.float32),
-        "dones": np.zeros((1, 10), dtype=np.float32),
-        "truncateds": np.zeros((1, 10), dtype=np.float32),
-        "next_states": np.arange(1, 11).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
-    }
-    buf.add(batch)
-
-    env_idx = np.array([0, 0, 0])
-    sample_idx = np.array([0, 3, 5])
-    sample_batch = {key: buf.buffer[key][env_idx, sample_idx] for key in buf.buffer}
-    result = buf._compute_nstep(env_idx, sample_idx, sample_batch)
-
-    # index 0: r0 + gamma*r1 + gamma^2*r2, next_state=state[2]
-    exp0 = 1 + gamma*2 + gamma**2*3
-    check(abs(result['rewards'][0] - exp0) < 1e-5, f"idx0 return: expected {exp0:.4f}, got {result['rewards'][0]:.4f}")
-    check(result['next_states'][0, 0] == 3.0, f"idx0 next_state should be state[2]'s next=3, got {result['next_states'][0, 0]}")
-    check(abs(result['nstep_gamma'][0] - gamma**3) < 1e-5, f"idx0 nstep_gamma should be gamma^3")
-
-    # index 3: r3 + gamma*r4 + gamma^2*r5
-    exp3 = 4 + gamma*5 + gamma**2*6
-    check(abs(result['rewards'][1] - exp3) < 1e-5, f"idx3 return: expected {exp3:.4f}, got {result['rewards'][1]:.4f}")
-
-    # ====== Test 2: nstep=3, done in the middle ======
-    print("\n" + "=" * 60)
-    print("Test 2: nstep=3, done truncates the n-step lookahead")
-    print("=" * 60)
-    buf2 = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=3)
-    batch2 = {
-        "states": np.arange(10).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
-        "actions": np.zeros((1, 10, 1), dtype=np.int64),
-        "rewards": np.array([[1., 2., 3., 4., 5., 6., 7., 8., 9., 10.]], dtype=np.float32),
-        "dones": np.array([[0, 1, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=np.float32),  # done at index 1
-        "truncateds": np.zeros((1, 10), dtype=np.float32),
-        "next_states": np.arange(1, 11).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
-    }
-    buf2.add(batch2)
-
-    env_idx2 = np.array([0])
-    sample_idx2 = np.array([0])
-    sample_batch2 = {key: buf2.buffer[key][env_idx2, sample_idx2] for key in buf2.buffer}
-    result2 = buf2._compute_nstep(env_idx2, sample_idx2, sample_batch2)
-
-    # index 0: done at index 1, so lookahead stops at index 1
-    # return = r0 + gamma*r1, next_state = next_states[1]
-    exp_done = 1 + gamma * 2
-    check(abs(result2['rewards'][0] - exp_done) < 1e-5,
-          f"done@1: return from idx0 should be {exp_done:.4f}, got {result2['rewards'][0]:.4f}")
-    check(result2['next_states'][0, 0] == 2.0,
-          f"done@1: next_state should be next_states[1]=2, got {result2['next_states'][0, 0]}")
-    check(result2['dones'][0] == 1.0, f"done@1: final done flag should be 1.0, got {result2['dones'][0]}")
-    check(abs(result2['nstep_gamma'][0] - gamma**2) < 1e-5,
-          f"done@1: nstep_gamma should be gamma^2, got {result2['nstep_gamma'][0]}")
-
-    # ====== Test 3: nstep=3, truncated in the middle ======
-    print("\n" + "=" * 60)
-    print("Test 3: nstep=3, truncated truncates the n-step lookahead")
-    print("=" * 60)
-    buf3 = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=3)
-    batch3 = {
-        "states": np.arange(10).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
-        "actions": np.zeros((1, 10, 1), dtype=np.int64),
-        "rewards": np.array([[1., 2., 3., 4., 5., 6., 7., 8., 9., 10.]], dtype=np.float32),
-        "dones": np.zeros((1, 10), dtype=np.float32),
-        "truncateds": np.array([[0, 0, 1, 0, 0, 0, 0, 0, 0, 0]], dtype=np.float32),  # truncated at index 2
-        "next_states": np.arange(1, 11).reshape(1, 10, 1).repeat(4, axis=2).astype(np.float32),
-    }
-    buf3.add(batch3)
-
-    env_idx3 = np.array([0])
-    sample_idx3 = np.array([1])
-    sample_batch3 = {key: buf3.buffer[key][env_idx3, sample_idx3] for key in buf3.buffer}
-    result3 = buf3._compute_nstep(env_idx3, sample_idx3, sample_batch3)
-
-    # index 1: truncated at index 2, so end_index stops at 2
-    # return = r1 + gamma*r2, next_state = next_states[2]
-    exp_trunc = 2 + gamma * 3
-   
-    check(abs(result3['rewards'][0] - exp_trunc) < 1e-5,
-          f"trunc@2: return from idx1 should be {exp_trunc:.4f}, got {result3['rewards'][0]:.4f}")
-    check(result3['next_states'][0, 0] == 3.0,
-          f"trunc@2: next_state should be next_states[2]=3, got {result3['next_states'][0, 0]}")
-    check(result3['dones'][0] == 0.0,
-          f"trunc@2: done flag should remain 0 (truncated != done), got {result3['dones'][0]}")
-
-    # ====== Test 4: nstep=3, boundary (buffer not full, near end) ======
-    print("\n" + "=" * 60)
-    print("Test 4: nstep=3, near buffer boundary (pos < buffer_size)")
-    print("=" * 60)
-    buf4 = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=3)
-    short_batch = {
-        "states": np.arange(5).reshape(1, 5, 1).repeat(4, axis=2).astype(np.float32),
-        "actions": np.zeros((1, 5, 1), dtype=np.int64),
-        "rewards": np.array([[1., 2., 3., 4., 5.]], dtype=np.float32),
-        "dones": np.zeros((1, 5), dtype=np.float32),
-        "truncateds": np.zeros((1, 5), dtype=np.float32),
-        "next_states": np.arange(1, 6).reshape(1, 5, 1).repeat(4, axis=2).astype(np.float32),
-    }
-    buf4.add(short_batch)
-    # buf4.pos = 5, buf4.full = False
-
-    env_idx4 = np.array([0])
-    sample_idx4 = np.array([4])  # last valid index
-    sample_batch4 = {key: buf4.buffer[key][env_idx4, sample_idx4] for key in buf4.buffer}
-    result4 = buf4._compute_nstep(env_idx4, sample_idx4, sample_batch4)
-
-    # index 4: next index 5 is out of range (pos=5), so end_index stays at 4
-    # return = r4 only (no lookahead), nstep_gamma = gamma^1
-    check(abs(result4['rewards'][0] - 5.0) < 1e-5,
-          f"boundary: return from idx4 should be 5.0 (no lookahead), got {result4['rewards'][0]:.4f}")
-    check(abs(result4['nstep_gamma'][0] - gamma) < 1e-5,
-          f"boundary: nstep_gamma should be gamma^1, got {result4['nstep_gamma'][0]}")
-
-    # index 3: can look 1 step ahead (index 4 valid, index 5 out of range)
-    sample_idx4b = np.array([3])
-    env_idx4b = np.array([0])
-    sample_batch4b = {key: buf4.buffer[key][env_idx4b, sample_idx4b] for key in buf4.buffer}
-    result4b = buf4._compute_nstep(env_idx4b, sample_idx4b, sample_batch4b)
-
-    exp_boundary = 4 + gamma * 5
-    check(abs(result4b['rewards'][0] - exp_boundary) < 1e-5,
-          f"boundary: return from idx3 should be {exp_boundary:.4f}, got {result4b['rewards'][0]:.4f}")
-    check(abs(result4b['nstep_gamma'][0] - gamma**2) < 1e-5,
-          f"boundary: nstep_gamma should be gamma^2, got {result4b['nstep_gamma'][0]}")
-
-    # ====== Test 5: nstep=1, should just return original reward ======
-    print("\n" + "=" * 60)
-    print("Test 5: nstep=1, no lookahead (baseline check)")
-    print("=" * 60)
-    buf5 = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=1)
-    buf5.add(short_batch)
-
-    env_idx5 = np.array([0, 0, 0])
-    sample_idx5 = np.array([0, 2, 4])
-    sample_batch5 = {key: buf5.buffer[key][env_idx5, sample_idx5] for key in buf5.buffer}
-    result5 = buf5._compute_nstep(env_idx5, sample_idx5, sample_batch5)
-
-    check(abs(result5['rewards'][0] - 1.0) < 1e-5, f"nstep=1: idx0 reward should be 1.0, got {result5['rewards'][0]}")
-    check(abs(result5['rewards'][1] - 3.0) < 1e-5, f"nstep=1: idx2 reward should be 3.0, got {result5['rewards'][1]}")
-    check(abs(result5['rewards'][2] - 5.0) < 1e-5, f"nstep=1: idx4 reward should be 5.0, got {result5['rewards'][2]}")
-
-    # ====== Test 6: done at start index itself ======
-    print("\n" + "=" * 60)
-    print("Test 6: nstep=3, done at the sampled index itself")
-    print("=" * 60)
-    buf6 = ReplayBuffer(obs_space, act_space, buffer_size=10, num_envs=1, gamma=gamma, nstep=3)
-    batch6 = {
-        "states": np.arange(5).reshape(1, 5, 1).repeat(4, axis=2).astype(np.float32),
-        "actions": np.zeros((1, 5, 1), dtype=np.int64),
-        "rewards": np.array([[1., 2., 3., 4., 5.]], dtype=np.float32),
-        "dones": np.array([[1, 0, 0, 0, 0]], dtype=np.float32),  # done at index 0
-        "truncateds": np.zeros((1, 5), dtype=np.float32),
-        "next_states": np.arange(1, 6).reshape(1, 5, 1).repeat(4, axis=2).astype(np.float32),
-    }
-    buf6.add(batch6)
-
-    env_idx6 = np.array([0])
-    sample_idx6 = np.array([0])
-    sample_batch6 = {key: buf6.buffer[key][env_idx6, sample_idx6] for key in buf6.buffer}
-    result6 = buf6._compute_nstep(env_idx6, sample_idx6, sample_batch6)
-
-    # done at index 0 means end_index stays at 0
-    check(abs(result6['rewards'][0] - 1.0) < 1e-5,
-          f"done@start: return should be 1.0 (no lookahead), got {result6['rewards'][0]}")
-    check(result6['dones'][0] == 1.0, f"done@start: done flag should be 1.0, got {result6['dones'][0]}")
-    check(abs(result6['nstep_gamma'][0] - gamma) < 1e-5,
-          f"done@start: nstep_gamma should be gamma^1, got {result6['nstep_gamma'][0]}")
-
-    # ====== Summary ======
-    print("\n" + "=" * 60)
-    print(f"Results: {passed}/{passed+failed} passed, {failed} failed")
-    print("=" * 60)
+    expert_dataset = ExpertDataset("/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/sac_hopper_10eps.hdf5",
+                                   observation_space=gym.spaces.Box(low=-np.inf, high=np.inf, shape=(11,)),
+                                   action_space=gym.spaces.Box(low=-1, high=1, shape=(3,)),
+                                   trajectory_num=10,
+                                   subsample_frequency=1,
+                                   gamma=0.99,
+                                   nstep=1)
+    print(expert_dataset.trajectories)

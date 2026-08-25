@@ -4,8 +4,8 @@ import numpy as np
 from collections import deque
 import gymnasium as gym
 import torch 
-from typing import Tuple
-
+from typing import Tuple, Dict, Any
+from omegaconf import DictConfig
 
 from logger.logger import Logger
 from memory.memory import ReplayBuffer, TrajectoryRollout
@@ -21,10 +21,10 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
     """Base class for off-policy RL algorithms."""
 
 
-    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: AgentBase, logger: Logger, device, save_pth: str, best_pth:str, args):
-        super(OnPolicyAlgorithm,self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth,best_pth, args)
+    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: AgentBase, logger: Logger, device, args: DictConfig, rl_args: DictConfig):
+        super(OnPolicyAlgorithm,self).__init__(training_envs, testing_envs, buffer, agent, logger, device, True, args)
 
-        self.collect_traj = args.algorithm.collect_traj
+        self.collect_traj = rl_args.collect_traj
         if self.collect_traj:
             self.traj_rollout = buffer
             self.trajnum = buffer.trajnum 
@@ -32,10 +32,10 @@ class OnPolicyAlgorithm(BaseAlgorithm, ABC):
             self.last_states = np.zeros((self.trajnum, *self.observation_space.shape), dtype=self.observation_space.dtype)
         else:
             self.last_states = np.zeros((self.num_training_envs, *self.observation_space.shape), dtype=self.observation_space.dtype)
-        self.gae = args.algorithm.gae
-        self.lambda_ = args.algorithm.lambda_
+        self.gae = rl_args.gae
+        self.lambda_ = rl_args.lambda_
         self.ret_rms = RunningMeanStd()
-        self.return_scaling = args.algorithm.return_scaling
+        self.return_scaling = rl_args.return_scaling
         self._eps = 1e-8
            
             

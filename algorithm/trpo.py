@@ -4,6 +4,8 @@ from torch.distributions import kl_divergence
 import numpy as np
 from typing import Tuple
 import math
+from typing import Dict, Any
+from omegaconf import DictConfig
 
 from logger.logger import Logger
 from memory.memory import ReplayBuffer, TrajectoryRollout
@@ -21,10 +23,10 @@ class TRPO(OnPolicyAlgorithm):
     """Implementation for TRPO algorithm."""
 
 
-    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: AgentBase, logger: Logger, device, save_pth: str, best_pth:str, args):
-        super(TRPO,self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth, best_pth, args)
+    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: AgentBase, logger: Logger, device, args: DictConfig, rl_args: DictConfig):
+        super(TRPO,self).__init__(training_envs, testing_envs, buffer, agent, logger, device, args, rl_args)
 
-        algo_args = args.algorithm
+        algo_args = rl_args
 
         self.delta = algo_args.delta
         self.cg_steps = algo_args.cg_steps
@@ -231,4 +233,3 @@ class TRPO(OnPolicyAlgorithm):
         result.add_metric("actor/gradient_direction_l2norm",torch.norm(gradient_direction,p=2).item())
         result.add_metric("actor/new_param_l2norm",torch.norm(new_parameter).item())
         return result
-

@@ -1,0 +1,4 @@
+name: GAILTRPO
+defaults:
+  - /algorithm/trpo@rl         
+  - /algorithm/gail@discriminator

@@ -2,7 +2,8 @@ import gymnasium as gym
 import torch
 import math  
 import numpy as np
-
+from typing import Dict, Any
+from omegaconf import DictConfig
 
 from utils.result import Result
 from utils import OPTIMIZER_DICT
@@ -14,10 +15,11 @@ from utils.utils import RunningMeanStd
 
 
 class PPO(OnPolicyAlgorithm):
-    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: ProbabilityA2CAgent, logger: Logger, device, save_pth: str, best_pth:str, args):
-        super(PPO,self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth, best_pth, args)
+    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: ProbabilityA2CAgent, logger: Logger, device, args: DictConfig, rl_args: DictConfig):
+        super(PPO,self).__init__(training_envs, testing_envs, buffer, agent, logger, device, args, rl_args)
 
-        algo_args = args.algorithm
+        algo_args = rl_args
+        
         self.eps_clip = algo_args.eps_clip
         self.value_coef = algo_args.value_coef
         self.use_entropy_loss= algo_args.use_entropy_loss

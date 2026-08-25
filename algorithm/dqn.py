@@ -6,7 +6,8 @@ from logger.logger import Logger
 import numpy as np
 from agent.agent import AtariDQNAgent
 from utils import OPTIMIZER_DICT
-
+from typing import Dict, Any
+from omegaconf import DictConfig
 
 
 
@@ -14,11 +15,11 @@ class DQN(OffPolicyAlgorithm):
     
     """DQN algorithm implementation."""
 
-    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: AtariDQNAgent, logger: Logger, device, save_pth: str,best_pth: str, args):
-        super(DQN, self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth,best_pth, args)
+    def __init__(self, training_envs, testing_envs, buffer: ReplayBuffer, agent: AtariDQNAgent, logger: Logger, device, args: DictConfig, rl_args: DictConfig):
+        super(DQN, self).__init__(training_envs, testing_envs, buffer, agent, logger, device, args, rl_args)
         
-        algo_args = args.algorithm
-        assert algo_args.name=="DQN", "The method name in args must be 'dqn' for DQN algorithm."
+        algo_args = rl_args
+        
         self.lr = algo_args.learning_rate
         self.start_epsilon = algo_args.start_epsilon
         self.epsilon = algo_args.start_epsilon
@@ -69,7 +70,7 @@ class DQN(OffPolicyAlgorithm):
             states = torch.from_numpy(states).to(self.device)
             actions = torch.from_numpy(actions).to(self.device)
             next_states = torch.from_numpy(next_states).to(self.device)
-
+            
             rewards = torch.from_numpy(rewards).float().to(self.device).unsqueeze(1)
             dones = torch.from_numpy(dones).float().to(self.device).unsqueeze(1)
             nstep_gamma = torch.from_numpy(batch['nstep_gamma']).float().to(self.device).unsqueeze(1)

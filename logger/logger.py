@@ -88,5 +88,14 @@ class Logger:
     def close(self):
         if self.use_wandb:
             wandb.finish()
+        if self.use_swanlab:
+            # A flaky network can make the cloud upload hang or raise; the training
+            # result is already on disk, so never let shutdown fail because of it.
+            try:
+                swanlab.finish()
+            except Exception as e:
+                print(f"[Logger] swanlab.finish() failed, ignoring: {e}")
         if self.use_tensorboard:
             self.writer.close()
+        if self.use_swanlab:
+            swanlab.finish()

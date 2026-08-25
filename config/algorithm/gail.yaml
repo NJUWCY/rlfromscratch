@@ -1,0 +1,10 @@
+name: GAIL
+disc_lr: 1e-4
+discriminator_optimizer: Adam
+discriminator_hidden_sizes: [84, 84]
+discriminator_activation: tanh
+gradient_penalty_coef: 10.0
+discriminator_gradient_penalty: true 
+discriminator_train_steps: 7
+# discriminator_train_epochs: 1
+discriminator_batch_size: 128

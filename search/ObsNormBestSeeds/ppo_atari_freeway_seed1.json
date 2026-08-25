@@ -1,0 +1,45 @@
+{
+  "run_script": "run_ppo_atari.py",
+  "sweep_name": "PPO-atari-best-seed",
+  "fixed_overrides": [
+    "algorithm=ppo",
+    "env=atari",
+    "env.num_training_envs=8",
+    "total_epoch=10000",
+    "interact_per_epoch=128",
+    "update_step_per_epoch=1",
+    "train_log_interval=10",
+    "save_interval=1000",
+    "test_interval=50",
+    "train_action_deterministic=false",
+    "algorithm.collect_traj=false",
+    "algorithm.buffer_name=ReplayBuffer",
+    "algorithm.update_epochs=4",
+    "algorithm.minibatch_size=256",
+    "algorithm.use_grad_clip=true",
+    "algorithm.max_grad_norm=0.5",
+    "algorithm.advan_norm=true",
+    "algorithm.return_scaling=false",
+    "algorithm.actor_lr=2.5e-4",
+    "algorithm.critic_lr=2.5e-4",
+    "algorithm.encoder_lr=2.5e-4",
+    "algorithm.lr_decay=true",
+    "algorithm.entropy_coef=0.01",
+    "algorithm.eps_clip=0.1",
+    "algorithm.value_clip=0.1",
+    "algorithm.common_head=true",
+    "algorithm.initialize=true",
+    "env.scale=true",
+    "env.obs_norm=false",
+    "algorithm.test_epsilon=0.01",
+    "experiment_name=PPO-atari-${env.name}"
+  ],
+  "search_space": {
+    "seed": [
+      1
+    ],
+    "env.name": [
+      "FreewayNoFrameskip-v4"
+    ]
+  }
+}

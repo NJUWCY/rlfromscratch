@@ -2,6 +2,8 @@ from .basealgorithm import BaseAlgorithm
 from .baseoffpolicy import OffPolicyAlgorithm
 from .baseonpolicy import OnPolicyAlgorithm
 from .offline import OfflineAlgorithm
+from .baseailalgorithm import AILAlgorithm
+
 
 
 from .dqn import DQN 
@@ -10,6 +12,7 @@ from .ppo import PPO
 from .sac import SAC
 from .bc import BehaviorCloning
 from .td3 import TD3
+from .gail import GAIL, GAILPPO, GAILTRPO
 
 
 ALGORITHM_DICT = {
@@ -18,5 +21,8 @@ ALGORITHM_DICT = {
     "PPO": PPO,
     "SAC": SAC,
     "BC": BehaviorCloning,
-    "TD3": TD3
+    "TD3": TD3,
+    "GAIL": GAIL,
+    "GAILPPO": GAILPPO,
+    "GAILTRPO": GAILTRPO
 }

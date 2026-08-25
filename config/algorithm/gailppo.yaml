@@ -1,0 +1,6 @@
+name: GAILPPO
+defaults:
+  - /algorithm/ppo@rl         
+  - /algorithm/gail@discriminator
+
+  

@@ -20,7 +20,7 @@ class BaseAlgorithm(ABC):
     """Base class for off-policy RL algorithms."""
 
 
-    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: AgentBase, logger: Logger, device, save_pth: str,best_pth:str, args):
+    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer | TrajectoryRollout, agent: AgentBase, logger: Logger, device, onpolicy:bool, args):
         super(BaseAlgorithm,self).__init__()
         self.training_envs = training_envs
         self.testing_envs = testing_envs
@@ -49,21 +49,18 @@ class BaseAlgorithm(ABC):
         self.save_interval = args.save_interval
         self.train_log_interval = args.train_log_interval
         
-        self.save_pth = save_pth
         self.args = args
         self.episode_reward_buffer = deque(maxlen=args.reward_buffer_size)
 
         self.best_score = -np.inf
-        self.best_pth = best_pth
         self.env_name = args.env.name
         self.env_type = ENVS_NAME_TYPE[self.env_name]
         self.gamma = args.gamma 
+        
+        self.onpolicy = onpolicy
+        self.test_epsilon = args.test_epsilon
 
-        self.onpolicy=args.algorithm.onpolicy
-        self.test_epsilon = args.algorithm.test_epsilon
-
-        self.obs_rms_path = args.log_dir + "/obs_rms.pth"
-
+        self.log_dir = args.log_dir
     
     @abstractmethod
     def update(self, batch: dict, start_train: bool)-> Result:
@@ -156,12 +153,12 @@ class BaseAlgorithm(ABC):
     def start_train(self):
         return True
 
-    def save(self):
+    def save(self, pre_fix: str = ""):
         # only save the agent and obs_rms, which are used for inference not the training
-        self.agent.save(self.save_pth)
+        self.agent.save(self.log_dir + "/" + pre_fix + "_model.pth")
         if self.args.env.obs_norm:
             obs_rms = self.training_envs.get_obs_rms()
-            torch.save(obs_rms.state_dict(), self.obs_rms_path)
+            torch.save(obs_rms.state_dict(), self.log_dir + "/" + pre_fix + "_obs_rms.pth")
 
 
     def run(self):
@@ -170,24 +167,25 @@ class BaseAlgorithm(ABC):
         """
         
         self.initialize() # reset envs
-        for epoch in tqdm(range(self.total_epoch), desc="Epoch", unit="epoch"):
-            if self.test_condition(epoch):
-                test_result, test_reward = evaluate(agent=self.agent, test_episodes=self.test_episodes,env_args=self.args.env, seed=self.seed+self.interaction_step,training_envs=self.training_envs, test_epsilon=self.test_epsilon)
-                self.logger.log_test(epoch, self.interaction_step, self.gradient_step, test_result)
-                if test_reward > self.best_score:
-                    self.best_score = test_reward
-                    self.agent.save(self.best_pth)
-            
-            collected_batch, interact_result = self.interact_with_envs()
-            train_result = self.update(collected_batch, self.start_train())
-            if self.train_log_condition(epoch):
-                train_result.add(interact_result)
-                self.logger.log_train(epoch, self.interaction_step, self.gradient_step, train_result)
-                               
-                              
-            if self.save_condition(epoch):
-                self.save()
-
-
+        try:
+            for epoch in tqdm(range(self.total_epoch), desc="Epoch", unit="epoch"):
+                if self.test_condition(epoch):
+                    test_result, test_reward = evaluate(agent=self.agent, test_episodes=self.test_episodes,env_args=self.args.env, seed=self.seed+self.interaction_step,training_envs=self.training_envs, test_epsilon=self.test_epsilon)
+                    self.logger.log_test(epoch, self.interaction_step, self.gradient_step, test_result)
+                    if test_reward > self.best_score:
+                        self.best_score = test_reward
+                        self.save(pre_fix="best")
+                
+                collected_batch, interact_result = self.interact_with_envs()
+                train_result = self.update(collected_batch, self.start_train())
+                if self.train_log_condition(epoch):
+                    train_result.add(interact_result)
+                    self.logger.log_train(epoch, self.interaction_step, self.gradient_step, train_result)
+                                
+                                
+                if self.save_condition(epoch):
+                    self.save(pre_fix="newest")
+        finally:
+            self.logger.close()
 
 

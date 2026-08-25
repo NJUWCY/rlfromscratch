@@ -1,5 +1,5 @@
-from .memory import ReplayBuffer, TrajectoryRollout, PrioritizedReplayBuffer
-from .expert_dataset import ExpertDataset, load_expert_data
+from .memory import ReplayBuffer, TrajectoryRollout, PrioritizedReplayBuffer, ExpertDataset
+
 from .datastructure import SumTree
 
 BUFFER_DICT = {

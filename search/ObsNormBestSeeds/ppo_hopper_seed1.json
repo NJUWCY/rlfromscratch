@@ -1,0 +1,31 @@
+{
+  "run_script": "run_ppo.py",
+  "sweep_name": "PPO-best-seed-obsnorm",
+  "fixed_overrides": [
+    "algorithm=ppo",
+    "total_epoch=1500",
+    "train_log_interval=10",
+    "save_interval=50",
+    "test_interval=10",
+    "train_action_deterministic=false",
+    "algorithm.collect_traj=false",
+    "algorithm.buffer_name=ReplayBuffer",
+    "algorithm.update_epochs=10",
+    "algorithm.minibatch_size=64",
+    "algorithm.use_grad_clip=true",
+    "algorithm.advan_norm=false",
+    "env.obs_norm=true",
+    "algorithm.rescale=false",
+    "algorithm.return_scaling=true",
+    "algorithm.lr_decay=true",
+    "interact_per_epoch=256",
+    "algorithm.initialize=true",
+    "algorithm.recompute_adv=true",
+    "algorithm.initial_log_sigma=-0.5",
+    "experiment_name=PPO_tianshou-${env.name}"
+  ],
+  "search_space": {
+    "seed": [1],
+    "env.name": ["Hopper-v5"]
+  }
+}

@@ -39,45 +39,46 @@ def main(cfg: DictConfig):
     logging.info("Creating the Logger...")
     runtime = datetime.now()
     runtime = runtime.strftime("%Y-%m-%d %H:%M:%S")
-    logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args.algorithm, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
+    logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
 
+    rl_algorithm = args.algorithm
     logging.info("Creating the ReplayBuffer...")
-    if args.algorithm.buffer_name=="TrajectoryRollout":
-        buffer = TrajectoryRollout(training_envs.observation_space,training_envs.action_space, args.algorithm.trajnum, args.env.max_episode_length,store_u=args.algorithm.rescale)
+    if rl_algorithm.buffer_name=="TrajectoryRollout":
+        buffer = TrajectoryRollout(training_envs.observation_space,training_envs.action_space, rl_algorithm.trajnum, args.env.max_episode_length,store_u=rl_algorithm.rescale)
     else:
-        buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.interact_per_epoch, training_envs.num_envs,onpolicy=args.algorithm.onpolicy,store_u=args.algorithm.rescale)
+        buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.interact_per_epoch, training_envs.num_envs,onpolicy=rl_algorithm.onpolicy,store_u=rl_algorithm.rescale)
 
     logging.info("Creating the Agent...")
-    if not args.algorithm.rescale:
+    if not rl_algorithm.rescale:
         actor = DiagGaussianActor(
             training_envs.observation_space, 
             training_envs.action_space, 
             MLPNetwork, 
             device=device,
-            state_dependent_std=args.algorithm.state_dependent_std,
-            hidden_sizes=args.algorithm.hidden_sizes, 
+            state_dependent_std=rl_algorithm.state_dependent_std,
+            hidden_sizes=rl_algorithm.hidden_sizes, 
             activation=torch.nn.Tanh,
-            initialize=args.algorithm.initialize,
-            initial_log_sigma=args.algorithm.initial_log_sigma
+            initialize=rl_algorithm.initialize,
+            initial_log_sigma=rl_algorithm.initial_log_sigma
         )
     else:
-        if args.algorithm.action_bound_method == "tanh":
+        if rl_algorithm.action_bound_method == "tanh":
             actor = TanhGaussianActor(
                 training_envs.observation_space, 
                 training_envs.action_space, 
                 MLPNetwork, 
                 device=device,
-                state_dependent_std=args.algorithm.state_dependent_std,
-                hidden_sizes=args.algorithm.hidden_sizes, 
+                state_dependent_std=rl_algorithm.state_dependent_std,
+                hidden_sizes=rl_algorithm.hidden_sizes, 
                 activation=torch.nn.Tanh,
-                initialize=args.algorithm.initialize,
-                initial_log_sigma=args.algorithm.initial_log_sigma
+                initialize=rl_algorithm.initialize,
+                initial_log_sigma=rl_algorithm.initial_log_sigma
             )
         else:
-            raise ValueError(f"Action bound method {args.algorithm.action_bound_method} not supported")
+            raise ValueError(f"Action bound method {rl_algorithm.action_bound_method} not supported")
 
 
-    critic = ValueFunction(training_envs.observation_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=torch.nn.Tanh, initialize=args.algorithm.initialize)
+    critic = ValueFunction(training_envs.observation_space, MLPNetwork, hidden_sizes=rl_algorithm.hidden_sizes, activation=torch.nn.Tanh, initialize=rl_algorithm.initialize)
 
     agent = ProbabilityA2CAgent(training_envs.observation_space, training_envs.action_space, device, actor, critic)
     
@@ -89,9 +90,7 @@ def main(cfg: DictConfig):
     algorithm = ALGORITHM_DICT[args.algorithm.name](training_envs=training_envs, testing_envs=None, 
                                                buffer=buffer, agent=agent, 
                                                logger=logger, device=device, 
-                                               save_pth=os.path.join(args.log_dir, "newest_model.pth"), 
-                                               best_pth=os.path.join(args.log_dir, "best_model.pth"),
-                                               args=args)
+                                               args=args, rl_args=rl_algorithm)
 
     logging.info("Begin Training...")
     algorithm.run()

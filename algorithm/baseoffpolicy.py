@@ -4,6 +4,8 @@ import numpy as np
 from collections import deque
 import gymnasium as gym
 import torch 
+from typing import Dict, Any
+from omegaconf import DictConfig
 
 
 from logger.logger import Logger
@@ -17,8 +19,8 @@ class OffPolicyAlgorithm(BaseAlgorithm, ABC):
     """Base class for off-policy RL algorithms."""
 
 
-    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer, agent: AgentBase, logger: Logger, device,  save_pth: str,best_pth:str, args):
-        super(OffPolicyAlgorithm,self).__init__(training_envs, testing_envs, buffer, agent, logger, device, save_pth,best_pth, args)
+    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer, agent: AgentBase, logger: Logger, device, args: DictConfig, rl_args: DictConfig):
+        super(OffPolicyAlgorithm,self).__init__(training_envs, testing_envs, buffer, agent, logger, device, False, args)
         self.start_train_step = args.start_train_step
         
 

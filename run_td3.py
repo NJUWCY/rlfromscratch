@@ -39,23 +39,24 @@ def main(cfg: DictConfig):
     logging.info("Creating the Logger...")
     runtime = datetime.now()
     runtime = runtime.strftime("%Y-%m-%d %H:%M:%S")
-    logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args.algorithm, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
+    logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
 
+    rl_algorithm = args.algorithm
     logging.info("Creating the ReplayBuffer...")
     
-    buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, args.algorithm.buffer_size//training_envs.num_envs, training_envs.num_envs, onpolicy=args.algorithm.onpolicy)
+    buffer = ReplayBuffer(training_envs.observation_space, training_envs.action_space, rl_algorithm.buffer_size//training_envs.num_envs, training_envs.num_envs, onpolicy=rl_algorithm.onpolicy)
 
     logging.info("Creating the Agent...")
 
-    activation = ACTIVATION_DICT[args.algorithm.activation]
-    if not args.algorithm.rescale:
+    activation = ACTIVATION_DICT[rl_algorithm.activation]
+    if not rl_algorithm.rescale:
         actor = DeterministicActor(
             observation_space=training_envs.observation_space, 
             action_space=training_envs.action_space, 
             net_architecture=MLPNetwork, 
             device=device,
-            explore_noise_sigma=args.algorithm.explore_noise_sigma,
-            hidden_sizes=args.algorithm.hidden_sizes, 
+            explore_noise_sigma=rl_algorithm.explore_noise_sigma,
+            hidden_sizes=rl_algorithm.hidden_sizes, 
             activation=activation
         )
         target_actor = DeterministicActor(
@@ -63,20 +64,20 @@ def main(cfg: DictConfig):
             action_space=training_envs.action_space, 
             net_architecture=MLPNetwork, 
             device=device,
-            explore_noise_sigma=args.algorithm.explore_noise_sigma,
-            hidden_sizes=args.algorithm.hidden_sizes, 
+            explore_noise_sigma=rl_algorithm.explore_noise_sigma,
+            hidden_sizes=rl_algorithm.hidden_sizes, 
             activation=activation
         )
         
     else:
-        if args.algorithm.action_bound_method == "tanh":
+        if rl_algorithm.action_bound_method == "tanh":
             actor = TanhDeterministicActor(
                 observation_space=training_envs.observation_space, 
                 action_space=training_envs.action_space, 
                 net_architecture=MLPNetwork, 
                 device=device,
-                explore_noise_sigma=args.algorithm.explore_noise_sigma,
-                hidden_sizes=args.algorithm.hidden_sizes, 
+                explore_noise_sigma=rl_algorithm.explore_noise_sigma,
+                hidden_sizes=rl_algorithm.hidden_sizes, 
                 activation=activation
             )
             target_actor = TanhDeterministicActor(
@@ -84,23 +85,23 @@ def main(cfg: DictConfig):
                 action_space=training_envs.action_space, 
                 net_architecture=MLPNetwork, 
                 device=device,
-                explore_noise_sigma=args.algorithm.explore_noise_sigma,
-                hidden_sizes=args.algorithm.hidden_sizes, 
+                explore_noise_sigma=rl_algorithm.explore_noise_sigma,
+                hidden_sizes=rl_algorithm.hidden_sizes, 
                 activation=activation
             )
         else:
-            raise ValueError(f"Action bound method {args.algorithm.action_bound_method} not supported")
+            raise ValueError(f"Action bound method {rl_algorithm.action_bound_method} not supported")
         
 
-    double_critic = args.algorithm.double_critic
+    double_critic = rl_algorithm.double_critic
     target_critic = None
     if double_critic:
-        critic = DoubleQFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=activation)
-        target_critic = DoubleQFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=activation) if args.algorithm.use_target else None
+        critic = DoubleQFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=rl_algorithm.hidden_sizes, activation=activation)
+        target_critic = DoubleQFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=rl_algorithm.hidden_sizes, activation=activation) if rl_algorithm.use_target else None
 
     else:
-        critic = QFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=activation)
-        target_critic = QFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=args.algorithm.hidden_sizes, activation=activation) if args.algorithm.use_target else None
+        critic = QFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=rl_algorithm.hidden_sizes, activation=activation)
+        target_critic = QFunction(training_envs.observation_space, training_envs.action_space, MLPNetwork, hidden_sizes=rl_algorithm.hidden_sizes, activation=activation) if rl_algorithm.use_target else None
 
     agent = TD3Agent(
         training_envs.observation_space, 
@@ -110,9 +111,9 @@ def main(cfg: DictConfig):
         critic,
         target_actor=target_actor,
         target_critic=target_critic,
-        use_target=args.algorithm.use_target, 
-        target_update_method=args.algorithm.target_update_method,
-        target_update_tau=args.algorithm.target_update_tau,
+        use_target=rl_algorithm.use_target, 
+        target_update_method=rl_algorithm.target_update_method,
+        target_update_tau=rl_algorithm.target_update_tau,
         double_critic=double_critic
         )
 
@@ -123,9 +124,7 @@ def main(cfg: DictConfig):
     algorithm = ALGORITHM_DICT[args.algorithm.name](training_envs=training_envs, testing_envs=None, 
                                                buffer=buffer, agent=agent, 
                                                logger=logger, device=device, 
-                                               save_pth=os.path.join(args.log_dir, "newest_model.pth"), 
-                                               best_pth=os.path.join(args.log_dir, "best_model.pth"),
-                                               args=args)
+                                               args=args, rl_args=rl_algorithm)
 
     logging.info("Begin Training...")
     algorithm.run()

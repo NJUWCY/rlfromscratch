@@ -39,36 +39,37 @@ def main(cfg: DictConfig):
     logging.info("Creating the Logger...")
     runtime = datetime.now()
     runtime = runtime.strftime("%Y-%m-%d %H:%M:%S")
-    logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args.algorithm, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
+    logger = Logger(project_name=args.experiment_name, run_name=runtime, config=args, log_dir=args.log_dir, use_wandb=args.use_wandb, use_tensorboard=args.use_tensorboard, use_swanlab=args.use_swanlab)
 
+    rl_algorithm = args.algorithm
     logging.info("Creating the ReplayBuffer...")
-    if args.algorithm.buffer_name=="ReplayBuffer":
+    if rl_algorithm.buffer_name=="ReplayBuffer":
         buffer = ReplayBuffer(training_envs.observation_space, 
                               training_envs.action_space, 
-                              args.algorithm.buffer_size//training_envs.num_envs, 
+                              rl_algorithm.buffer_size//training_envs.num_envs, 
                               training_envs.num_envs,
                               gamma=args.gamma,
-                              nstep=args.algorithm.nstep)
-    elif args.algorithm.buffer_name=="PrioritizedReplayBuffer":
+                              nstep=rl_algorithm.nstep)
+    elif rl_algorithm.buffer_name=="PrioritizedReplayBuffer":
         buffer = PrioritizedReplayBuffer(training_envs.observation_space, 
                                          training_envs.action_space, 
-                                         args.algorithm.buffer_size//training_envs.num_envs, 
+                                         rl_algorithm.buffer_size//training_envs.num_envs, 
                                          training_envs.num_envs,
-                                         alpha=args.algorithm.alpha,
-                                         beta=args.algorithm.beta,
-                                         batch_norm=args.algorithm.weight_batch_norm,
+                                         alpha=rl_algorithm.alpha,
+                                         beta=rl_algorithm.beta,
+                                         batch_norm=rl_algorithm.weight_batch_norm,
                                          gamma=args.gamma,
-                                         nstep=args.algorithm.nstep)
+                                         nstep=rl_algorithm.nstep)
     logging.info("Creating the Agent...")
     network = AtariDQNNetwork(training_envs.observation_space.shape, 
                               training_envs.action_space.n, 
-                              dueling_network=args.algorithm.dueling_network, 
-                              conv_gradient_rescale=args.algorithm.conv_gradient_rescale)
-    if args.algorithm.use_target:
+                              dueling_network=rl_algorithm.dueling_network, 
+                              conv_gradient_rescale=rl_algorithm.conv_gradient_rescale)
+    if rl_algorithm.use_target:
         target_network = AtariDQNNetwork(training_envs.observation_space.shape, 
                                          training_envs.action_space.n, 
-                                         dueling_network=args.algorithm.dueling_network,
-                                         conv_gradient_rescale=args.algorithm.conv_gradient_rescale)
+                                         dueling_network=rl_algorithm.dueling_network,
+                                         conv_gradient_rescale=rl_algorithm.conv_gradient_rescale)
         
         agent = AtariDQNAgent(training_envs.observation_space, 
                               training_envs.action_space, 
@@ -76,8 +77,8 @@ def main(cfg: DictConfig):
                               network=network,
                               use_target=True,
                               target_network=target_network, 
-                              target_update_tau=args.algorithm.target_update_tau,
-                              target_update_method=args.algorithm.target_update_method)
+                              target_update_tau=rl_algorithm.target_update_tau,
+                              target_update_method=rl_algorithm.target_update_method)
     else:
         agent = AtariDQNAgent(training_envs.observation_space,
                             training_envs.action_space, 
@@ -92,9 +93,7 @@ def main(cfg: DictConfig):
     algorithm = ALGORITHM_DICT[args.algorithm.name](training_envs=training_envs, testing_envs=None, 
                                                buffer=buffer, agent=agent, 
                                                logger=logger, device=device, 
-                                               save_pth=os.path.join(args.log_dir, "newest_model.pth"), 
-                                               best_pth=os.path.join(args.log_dir, "best_model.pth"),
-                                               args=args)
+                                               args=args, rl_args=rl_algorithm)
 
     logging.info("Begin Training...")
     algorithm.run()

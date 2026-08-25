@@ -43,6 +43,7 @@ import json
 import os
 import random
 import re
+import signal
 import subprocess
 import threading
 import time
@@ -233,6 +234,23 @@ def build_command(
     return cmd
 
 
+def _kill_process_group(proc: subprocess.Popen) -> None:
+    try:
+        pgid = os.getpgid(proc.pid)
+    except ProcessLookupError:
+        return
+    os.killpg(pgid, signal.SIGTERM)
+    try:
+        proc.wait(timeout=60)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
 def run_one(
     idx: int,
     total: int,
@@ -242,6 +260,7 @@ def run_one(
     started_at: float,
     counter: dict,
     workers: int,
+    timeout: float | None = None,
 ) -> tuple[int, int, float]:
     Path(run_dir).mkdir(parents=True, exist_ok=True)
     log_path = os.path.join(run_dir, "stdout.log")
@@ -259,8 +278,19 @@ def run_one(
             f.write(f"[{datetime.now().isoformat()}] CMD: {' '.join(cmd)}\n")
             f.write(f"CUDA_VISIBLE_DEVICES={env.get('CUDA_VISIBLE_DEVICES', '')}\n\n")
             f.flush()
-            proc = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, env=env)
-        rc = proc.returncode
+            # start_new_session so a stuck run can be killed together with the
+            # env / dataloader subprocesses it spawned.
+            proc = subprocess.Popen(
+                cmd, stdout=f, stderr=subprocess.STDOUT, env=env, start_new_session=True
+            )
+            try:
+                rc = proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _print(
+                    f"[timeout {idx:06d}] exceeded {timeout / 3600.0:.2f}h, killing -> {run_dir}"
+                )
+                _kill_process_group(proc)
+                rc = proc.wait()
     finally:
         if gpu_queue is not None and gpu is not None:
             gpu_queue.put(gpu)
@@ -310,6 +340,10 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     p.add_argument("--log-dir", type=str, default=None,
                    help="output directory; defaults to "
                         "outputs/Humanoid-v5-PPO-search/<timestamp>")
+    p.add_argument("--timeout-hours", type=float, default=None,
+                   help="kill a run (and its children) after this many hours; "
+                        "guards against jobs hanging in shutdown, e.g. when the "
+                        "logger cannot reach its cloud backend.")
     p.add_argument("--dry-run", action="store_true",
                    help="print the first few commands without running them")
     return p.parse_known_args()
@@ -379,6 +413,7 @@ def main() -> None:
     counter = {"done": 0, "lock": threading.Lock()}
     started_at = time.time()
 
+    failures: list[tuple[int, int]] = []
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = [
             pool.submit(
@@ -391,12 +426,15 @@ def main() -> None:
                 started_at,
                 counter,
                 args.workers,
+                args.timeout_hours * 3600.0 if args.timeout_hours else None,
             )
             for idx, cmd, run_dir in tasks
         ]
         try:
             for fut in as_completed(futures):
-                fut.result()
+                idx, rc, _ = fut.result()
+                if rc != 0:
+                    failures.append((idx, rc))
         except KeyboardInterrupt:
             _print("KeyboardInterrupt received; cancelling pending tasks...")
             for fut in futures:
@@ -405,6 +443,12 @@ def main() -> None:
 
     total_h = (time.time() - started_at) / 3600.0
     _print(f"All done. {n} runs in {total_h:.2f}h, sweep dir: {base_log_dir}")
+    if failures:
+        failure_text = ", ".join(
+            f"run {idx:06d}: exit {rc}" for idx, rc in failures
+        )
+        _print(f"ERROR: {len(failures)} run(s) failed: {failure_text}")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
