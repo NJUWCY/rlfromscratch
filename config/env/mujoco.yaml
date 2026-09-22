@@ -1,3 +1,5 @@
 max_episode_length: 1000
 num_training_envs: 8
 obs_norm: false
+# Append the DAC absorbing-state indicator bit to observations.
+absorbing: false

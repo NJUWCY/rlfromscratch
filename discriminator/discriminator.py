@@ -64,19 +64,33 @@ class DiscriminatorBase(nn.Module, ABC):
 
 
 # TODO: add visual input support for discriminator, currently only support vector input
+REWARD_FUNCTIONS = ("GAIL", "AIRL", "FAIRL")
+
+
 class GAILDiscriminator(DiscriminatorBase):
-    def __init__(self,observation_space: Space, action_space: Space, device:torch.device, network:nn.Module):
+    def __init__(self,observation_space: Space, action_space: Space, device:torch.device, network:nn.Module, reward_function:str="GAIL"):
         super(GAILDiscriminator, self).__init__(observation_space, action_space, device)
         self.input_dim = observation_space.shape[0] + action_space.shape[0]
         self.network = network
+        if reward_function not in REWARD_FUNCTIONS:
+            raise ValueError(f"reward_function must be one of {REWARD_FUNCTIONS}, got {reward_function}")
+        self.reward_function = reward_function
     
     def predict_reward(self, states:Union[np.ndarray, torch.Tensor], actions:Union[np.ndarray, torch.Tensor]) -> np.ndarray:
         states = to_correct_device_tensor(states, self.device)
         actions = to_correct_device_tensor(actions, self.device)
         assert states.shape[1] == self.observation_space.shape[0]
         inputs = torch.concat([states, actions], axis=1)
-        D = nn.functional.sigmoid(self.network(inputs))
-        rewards = -torch.log(1-D)
+        logits = self.network(inputs)
+        if self.reward_function == "GAIL":
+            D = nn.functional.sigmoid(logits)
+            # Strictly positive survival bonus, the usual choice for DAC.
+            rewards = -torch.log(1-D)
+        else:
+            # log D - log(1 - D)=logits, i.e. the discriminator logits.
+            rewards = logits
+            if self.reward_function == "FAIRL":
+                rewards = torch.exp(rewards) * -rewards
         rewards = rewards.detach().cpu().numpy()
 
         return rewards
@@ -87,4 +101,41 @@ class GAILDiscriminator(DiscriminatorBase):
         logits = self.network(states_actions)
         return logits
 
+
+class AIRLDiscriminator(DiscriminatorBase):
+    def __init__(self,observation_space: Space, action_space: Space, device:torch.device, network:nn.Module):
+        super(AIRLDiscriminator, self).__init__(observation_space, action_space, device)
+        self.input_dim = observation_space.shape[0] + action_space.shape[0]
+        self.network = network
     
+    def predict_reward(self, states:Union[np.ndarray, torch.Tensor], 
+            actions:Union[np.ndarray, torch.Tensor], 
+            next_states:Union[np.ndarray, torch.Tensor], 
+            dones:Union[np.ndarray, torch.Tensor], 
+            log_probs:Union[np.ndarray, torch.Tensor], 
+            sub_logprobs:bool) -> np.ndarray:
+
+        states = to_correct_device_tensor(states, self.device)
+        actions = to_correct_device_tensor(actions, self.device)
+        next_states = to_correct_device_tensor(next_states, self.device)
+        dones = to_correct_device_tensor(dones, self.device)
+        log_probs = to_correct_device_tensor(log_probs, self.device)
+        assert states.shape[1] == self.observation_space.shape[0]
+        if sub_logprobs:
+            rewards = self.network(states, actions, next_states, dones) - log_probs
+        else:
+            rewards = self.network(states, actions, next_states, dones)
+        
+        
+        rewards = rewards.detach().cpu().numpy()
+        return rewards 
+    
+    
+    def predict_logits(self, states:Union[np.ndarray, torch.Tensor], actions:Union[np.ndarray, torch.Tensor], next_states:Union[np.ndarray, torch.Tensor], dones:Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
+        states = to_correct_device_tensor(states, self.device)
+        actions = to_correct_device_tensor(actions, self.device)
+        next_states = to_correct_device_tensor(next_states, self.device)
+        dones = to_correct_device_tensor(dones, self.device)
+        assert states.shape[1] == self.observation_space.shape[0]
+        logits = self.network(states, actions, next_states, dones)
+        return logits

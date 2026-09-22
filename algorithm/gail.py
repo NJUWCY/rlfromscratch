@@ -47,8 +47,7 @@ class GAIL(AILAlgorithm,OnPolicyAlgorithm):
                 discriminator_result = self._update_discriminator(batch)
           
 
-        with Result("buffer") as result:
-            self._update_buffer(batch)
+        result = self._update_buffer(batch)
             
         if start_train:
             result.add(discriminator_result)
@@ -66,22 +65,24 @@ class GAIL(AILAlgorithm,OnPolicyAlgorithm):
         
 
     def _update_buffer(self, batch):
-        
-        if self.collect_traj:
-            states,actions = self.traj_rollout.states, self.traj_rollout.actions
-            states = states.reshape((-1,*states.shape[2:]))
-            actions = actions.reshape((-1,*actions.shape[2:])) 
-            with torch.no_grad():
-                rewards = self.discriminator.predict_reward(states,actions).squeeze(-1)
-            self.traj_rollout.rewards = rewards.reshape(*self.traj_rollout.rewards.shape)
-        else:
-            states,actions = batch['states'], batch['actions']
-            states = states.reshape((-1,*states.shape[2:]))
-            actions = actions.reshape((-1,*actions.shape[2:])) 
-            with torch.no_grad():
-                rewards = self.discriminator.predict_reward(states,actions).squeeze(-1)
-            batch['rewards'] = rewards.reshape(*batch['rewards'].shape)
-            self.buffer.add(batch) 
+        with Result("buffer") as result:
+            if self.collect_traj:
+                states,actions = self.traj_rollout.states, self.traj_rollout.actions
+                states = states.reshape((-1,*states.shape[2:]))
+                actions = actions.reshape((-1,*actions.shape[2:])) 
+                with torch.no_grad():
+                    rewards = self.discriminator.predict_reward(states,actions).squeeze(-1)
+                self.traj_rollout.rewards = rewards.reshape(*self.traj_rollout.rewards.shape)
+            else:
+                states,actions = batch['states'], batch['actions']
+                states = states.reshape((-1,*states.shape[2:]))
+                actions = actions.reshape((-1,*actions.shape[2:])) 
+                with torch.no_grad():
+                    rewards = self.discriminator.predict_reward(states,actions).squeeze(-1)
+                batch['rewards'] = rewards.reshape(*batch['rewards'].shape)
+                self.buffer.add(batch) 
+        result.add_metric("discriminator_rewards", rewards.mean().item())
+        return result
         
     def _compute_gradient_penalty(self, expert_states:torch.Tensor, expert_actions:torch.Tensor, policy_states:torch.Tensor, policy_actions:torch.Tensor):
         alpha = torch.rand(expert_states.shape[0],1,device=expert_states.device)
@@ -112,8 +113,14 @@ class GAIL(AILAlgorithm,OnPolicyAlgorithm):
             if self.collect_traj:
                 policy_states = self.traj_rollout.states
                 policy_actions = self.traj_rollout.actions
+                masks = self.traj_rollout.masks 
                 policy_states = policy_states.reshape((-1,*policy_states.shape[2:]))
                 policy_actions = policy_actions.reshape((-1,*policy_actions.shape[2:]))
+                masks = masks.reshape((-1,))
+                masks = masks==1
+                policy_states = policy_states[masks]
+                policy_actions = policy_actions[masks]
+            
             else:
                 policy_states = batch['states']
                 policy_actions = batch['actions']

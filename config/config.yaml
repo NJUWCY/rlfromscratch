@@ -12,6 +12,7 @@ env:
   num_testing_envs: 8
   obs_norm: false
   scale: False
+  absorbing: false
 
 test_epsilon: 0
 

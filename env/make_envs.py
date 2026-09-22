@@ -21,21 +21,28 @@ from utils.utils import RunningMeanStd
 class VecObsNorm(VecEnvWrapper):
     """Normalize observations from a Stable-Baselines3 vectorized environment."""
 
-    def __init__(self, envs, update_obs_rms=True):
+    def __init__(self, envs, update_obs_rms=True, skip_last_dim=False):
         super().__init__(venv=envs)
         self.update_obs_rms = update_obs_rms
         self.obs_rms = RunningMeanStd()
+        # With DAC absorbing states the last entry is an indicator bit, not a
+        # feature. It is constant 0 on live observations, so feeding it to the
+        # running statistics would give it zero variance and rescale the
+        # absorbing state's 1 into a huge (then clipped) value.
+        self.skip_last_dim = skip_last_dim
+
+    def _update_obs_rms(self, obs: np.ndarray) -> None:
+        if self.obs_rms and self.update_obs_rms:
+            self.obs_rms.update(obs[..., :-1] if self.skip_last_dim else obs)
 
     def reset(self):
         obs = self.venv.reset()
-        if self.obs_rms and self.update_obs_rms:
-            self.obs_rms.update(obs)
+        self._update_obs_rms(obs)
         return self._norm_obs(obs)
 
     def step_wait(self):
         obs, rewards, dones, infos = self.venv.step_wait()
-        if self.obs_rms and self.update_obs_rms:
-            self.obs_rms.update(obs)
+        self._update_obs_rms(obs)
         obs = self._norm_obs(obs).astype(np.float32)
 
         # process with the infos 
@@ -48,9 +55,11 @@ class VecObsNorm(VecEnvWrapper):
         return obs, rewards, dones, infos
 
     def _norm_obs(self, obs: np.ndarray) -> np.ndarray:
-        if self.obs_rms:
+        if not self.obs_rms:
+            return obs
+        if not self.skip_last_dim:
             return self.obs_rms.norm(obs)
-        return obs
+        return np.concatenate([self.obs_rms.norm(obs[..., :-1]), obs[..., -1:]], axis=-1)
 
     def set_obs_rms(self, obs_rms: RunningMeanStd) -> None:
         """Set with given observation running mean/std."""
@@ -70,7 +79,7 @@ def make_env(args: DictConfig,is_training: bool,scale=False):
         env = gym.make(env_name, frameskip=1)
         env = atari_wrap(env, episode_life=is_training, clip_rewards=is_training, frame_stack=args.frame_stack, scale=scale,frame_skip=args.frame_skip)
     elif env_type=="mujoco":
-        env = make_mujoco_env(env_name,max_episode_length=args.max_episode_length)
+        env = make_mujoco_env(env_name,max_episode_length=args.max_episode_length,absorbing=getattr(args,"absorbing",False))
     elif env_type=="basic":
         env = make_basic_env(env_name,max_episode_length=args.max_episode_length)
     else:
@@ -95,7 +104,7 @@ def make_env_func(args: DictConfig, is_training: bool,seed=None):
                              frame_skip=args.frame_skip,
                              max_episode_steps=args.max_episode_length)
         elif env_type=="mujoco":
-            env = make_mujoco_env(env_name,max_episode_length=args.max_episode_length)
+            env = make_mujoco_env(env_name,max_episode_length=args.max_episode_length,absorbing=getattr(args,"absorbing",False))
         elif env_type=="basic":
             env = make_basic_env(env_name,max_episode_length=args.max_episode_length)
         else:
@@ -123,7 +132,7 @@ def make_vec_envs(args: DictConfig,is_training: bool,seed: int):
     # if ENVS_NAME_TYPE[env_name]=="mujoco" and args.obs_norm: 
 
     if getattr(args, "obs_norm", False):
-        envs = VecObsNorm(envs, update_obs_rms=is_training)
+        envs = VecObsNorm(envs, update_obs_rms=is_training, skip_last_dim=getattr(args, "absorbing", False))
     return envs
 
 

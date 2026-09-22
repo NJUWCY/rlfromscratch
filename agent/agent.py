@@ -388,10 +388,11 @@ class SACAgent(ProbabilityA2CAgent):
         else:
             return self.target_critic(states, actions)
 
-    def get_value(self, states:np.ndarray,temperature:torch.Tensor):
+    def get_value(self, states:np.ndarray,temperature:torch.Tensor,absorbing:torch.Tensor=None):
         """
         states: np.ndarray:(batch, state_dim)
         temperature: tensor:(1,)
+        absorbing: tensor:(batch,1) or None, 1 marks DAC absorbing states
         output: (batch,1)
         """
         # In SAC, get_value is used to get the value of the state-action pair, so we don't need to do gradient update here
@@ -401,6 +402,11 @@ class SACAgent(ProbabilityA2CAgent):
         actions, log_probs, u = self.actor.get_action(states, deterministic=False)
 
         log_probs = log_probs.unsqueeze(1)
+        if absorbing is not None:
+            # The agent has no control at an absorbing state: it always plays the
+            # zero action and collects no entropy bonus there.
+            actions = (1 - absorbing) * actions
+            log_probs = (1 - absorbing) * log_probs
         if self.use_target:
             q = self.get_q_function_from_target(states, actions)
         else:

@@ -1,0 +1,11 @@
+name: DAC
+disc_lr: 1e-4
+discriminator_optimizer: Adam
+discriminator_hidden_sizes: [256, 256]
+discriminator_activation: tanh
+gradient_penalty_coef: 10.0
+discriminator_gradient_penalty: true
+discriminator_train_steps: 1
+discriminator_batch_size: 256
+# GAIL: -log(1 - D), a positive survival bonus. AIRL: log D - log(1 - D).
+reward_function: AIRL

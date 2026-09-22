@@ -569,3 +569,37 @@ class DiscreteVFunction(Critic):
     
     def forward(self, x:torch.Tensor):
         return self.fc(self.encoder(x))
+
+
+class ShapedRewardNet(nn.Module):
+    def __init__(self, 
+                 discriminator_base_network: nn.Module, 
+                 potential_base_network: nn.Module, 
+                 use_action: bool, 
+                 use_next_state: bool, 
+                 use_done: bool, 
+                 gamma: float):
+        
+        super(ShapedRewardNet, self).__init__()
+        self.base = discriminator_base_network
+        self.potential = potential_base_network
+        self.use_action = use_action 
+        self.use_next_state = use_next_state 
+        self.use_done = use_done 
+        self.gamma = gamma 
+    
+    def forward(self, states: torch.Tensor, actions: torch.Tensor, next_states: torch.Tensor, dones: torch.Tensor, get_base: bool = False):
+        inputs = states
+        if self.use_action:
+            inputs = torch.cat([inputs, actions], dim=1)
+        if self.use_next_state:
+            inputs = torch.cat([inputs, next_states], dim=1)
+        if self.use_done:
+            inputs = torch.cat([inputs, dones], dim=1)
+        
+        base_output = self.base(inputs)
+
+        if get_base:
+            return base_output
+        else:
+            return base_output + (1-dones)*self.gamma*self.potential(next_states) - self.potential(states)

@@ -4,6 +4,7 @@ from gymnasium.wrappers import TimeLimit
 from typing import Any
 from .basic_envs import Monitor
 from .basic_envs import TruncatedMonitor
+from .absorbing import AbsorbingWrapper
 
 
 class MuJoCoStateInfo(gym.Wrapper):
@@ -28,13 +29,16 @@ class MuJoCoStateInfo(gym.Wrapper):
         return observation, reward, terminated, truncated, info
 
 
-def make_mujoco_env(env_name:str, max_episode_length=1000):
+def make_mujoco_env(env_name:str, max_episode_length=1000, absorbing=False):
     env = gym.make(env_name)
     env = TimeLimit(env, max_episode_steps=max_episode_length)
     env = MuJoCoStateInfo(env)
     env = Monitor(env)
     env = TruncatedMonitor(env)
-    
+    if absorbing:
+        # Outermost so that it also extends info["truncated_observation"].
+        env = AbsorbingWrapper(env)
+
     return env
 
 if __name__ == "__main__":

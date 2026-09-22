@@ -43,7 +43,8 @@ class SAC(OffPolicyAlgorithm):
             self.temp_optimizer: torch.optim.Optimizer = OPTIMIZER_DICT[algo_args.temp_optimizer]([self.log_temp], lr=self.temp_lr)
         self.update_log_temp = algo_args.update_log_temp
         
-        self.target_entropy = -self.action_dim
+        # target_entropy is expressed per action dimension (-1.0 is the usual SAC heuristic)
+        self.target_entropy = algo_args.target_entropy * self.action_dim
 
     def _update_buffer(self, batch):
         self.buffer.add(batch)
@@ -53,18 +54,30 @@ class SAC(OffPolicyAlgorithm):
 
 
     def _update_policy(self):
+        return self._sac_update(self.buffer.sample(self.batch_size))
+
+    def _sac_update(self, batch):
+        """One SAC update on an already-sampled batch.
+
+        ``absorbing`` / ``next_absorbing`` are optional and only set by DAC: they
+        mark the artificial absorbing states, where the agent has no control and
+        therefore neither earns an entropy bonus nor shapes the temperature.
+        """
         self.agent.train()
         with Result("train") as result:
-            batch = self.buffer.sample(self.batch_size)
             states, actions, next_states, rewards, dones = batch['states'], batch['actions'], batch['next_states'], batch['rewards'], batch['dones']
 
             rewards = torch.from_numpy(rewards).float().to(self.device).unsqueeze(1)
             dones = torch.from_numpy(dones).float().to(self.device).unsqueeze(1)
             nstep_gamma = torch.from_numpy(batch['nstep_gamma']).float().to(self.device).unsqueeze(1)
 
+            zeros = np.zeros(len(batch['states']), dtype=np.float32)
+            absorbing = torch.from_numpy(batch.get('absorbing', zeros)).float().to(self.device).unsqueeze(1)
+            next_absorbing = torch.from_numpy(batch.get('next_absorbing', zeros)).float().to(self.device).unsqueeze(1)
+
             # calculate the q loss    
             with torch.no_grad():
-                target = rewards + (1 - dones) * nstep_gamma * self.agent.get_value(next_states,temperature=self.log_temp.detach().exp())
+                target = rewards + (1 - dones) * nstep_gamma * self.agent.get_value(next_states,temperature=self.log_temp.detach().exp(),absorbing=next_absorbing)
                     
             q1, q2 = self.agent.get_double_q_function(states, actions)
             
@@ -84,9 +97,10 @@ class SAC(OffPolicyAlgorithm):
             # update actor
             
             rsample_actions, log_probs, u = self.agent.resample_action(states)
+            control = 1 - absorbing.squeeze(1)
 
             q = self.agent.get_q_function(states, rsample_actions).squeeze(1)
-            actor_loss = (self.log_temp.detach().exp() * log_probs - q).mean()
+            actor_loss = (control * (self.log_temp.detach().exp() * log_probs - q)).sum()/control.sum()
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
             self.actor_optimizer.step()
@@ -94,9 +108,9 @@ class SAC(OffPolicyAlgorithm):
             if self.learn_temp:
                 if self.update_log_temp:
                     # why here use the log_temp instead of temp?
-                    temp_loss = -self.log_temp * (log_probs.detach()+self.target_entropy).mean()
+                    temp_loss = -self.log_temp * (control * (log_probs.detach()+self.target_entropy)).sum()/control.sum()
                 else:
-                    temp_loss = self.log_temp.exp() * (log_probs.detach()+self.target_entropy).mean()
+                    temp_loss = self.log_temp.exp() * (control * (log_probs.detach()+self.target_entropy)).sum()/control.sum()
                 self.temp_optimizer.zero_grad()
                 temp_loss.backward()
                 self.temp_optimizer.step()

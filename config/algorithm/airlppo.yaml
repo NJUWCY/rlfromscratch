@@ -1,0 +1,6 @@
+name: AIRLPPO
+defaults:
+  - /algorithm/ppo@rl         
+  - /algorithm/airl@discriminator
+
+  

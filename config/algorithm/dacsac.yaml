@@ -1,0 +1,16 @@
+name: DACSAC
+defaults:
+  - /algorithm/sac@rl
+  - /algorithm/dac@discriminator
+  - _self_
+
+rl:
+  buffer_name: AbsorbingReplayBuffer
+  batch_size: 256
+  nstep: 1
+  # DAC learns the temperature, with the entropy target scaled per action dim.
+  learn_temp: true
+  update_log_temp: true
+  init_temp: 0.1
+  target_entropy: -0.5
+  target_update_tau: 0.01

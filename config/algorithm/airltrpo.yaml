@@ -1,0 +1,4 @@
+name: AIRLTRPO
+defaults:
+  - /algorithm/trpo@rl         
+  - /algorithm/airl@discriminator

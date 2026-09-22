@@ -1,0 +1,19 @@
+name: AIRL
+disc_lr: 1e-4
+discriminator_optimizer: Adam
+base_hidden_sizes: [64, 64]
+base_activation: relu
+use_action: true
+use_next_state: false
+use_done: false
+potential_hidden_sizes: [84, 84]
+potential_activation: relu
+gradient_penalty_coef: 10.0
+discriminator_gradient_penalty: false
+discriminator_train_steps: 7
+# discriminator_train_epochs: 1
+discriminator_batch_size: 128
+
+use_rms: false
+sub_logprobs: false
+update_with_logprobs: false

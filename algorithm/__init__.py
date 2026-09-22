@@ -13,6 +13,8 @@ from .sac import SAC
 from .bc import BehaviorCloning
 from .td3 import TD3
 from .gail import GAIL, GAILPPO, GAILTRPO
+from .airl import AIRL, AIRLPPO, AIRLTRPO
+from .dac import DAC, DACSAC
 
 
 ALGORITHM_DICT = {
@@ -24,5 +26,10 @@ ALGORITHM_DICT = {
     "TD3": TD3,
     "GAIL": GAIL,
     "GAILPPO": GAILPPO,
-    "GAILTRPO": GAILTRPO
+    "GAILTRPO": GAILTRPO,
+    "AIRL": AIRL,
+    "AIRLPPO": AIRLPPO,
+    "AIRLTRPO": AIRLTRPO,
+    "DAC": DACSAC,
+    "DACSAC": DACSAC,
 }

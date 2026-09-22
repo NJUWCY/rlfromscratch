@@ -6,6 +6,7 @@ import numpy as np
 import random
 import gymnasium as gym 
 from utils.utils import get_action_dim
+from env.absorbing import absorbing_state, absorbing_action, insert_absorbing_self_loops
 from .datastructure import SumTree
 
 
@@ -127,11 +128,9 @@ class ReplayBuffer:
             returns += self.gamma**i * (1-outof_end) * self.buffer['rewards'][env_indices, self._loop_to_real(cur_indices)]
 
         end_real_indices = self._loop_to_real(end_loop_indices)
-        dones = self.buffer['dones'][env_indices, end_real_indices]
-
-        
-        batch['rewards'] = returns 
-        batch['dones'] = dones
+        batch['rewards'] = returns
+        batch['dones'] = self.buffer['dones'][env_indices, end_real_indices]
+        batch['truncateds'] = self.buffer['truncateds'][env_indices, end_real_indices]
         batch['next_states'] = self.buffer['next_states'][env_indices, end_real_indices]
         batch['nstep_gamma'] = self.gamma ** (end_loop_indices - loop_indices + 1)
         return batch 
@@ -261,6 +260,146 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.max_td = 1.
     
 
+class AbsorbingReplayBuffer(ReplayBuffer):
+    """Replay buffer for DAC, one circular stream per environment.
+
+    Absorbing self-loops are inserted immediately after real terminations, so
+    the number of writes per step differs across environments. Each environment
+    therefore keeps its own write head. n-step returns walk that environment's
+    timeline and stop on ``dones``, ``truncateds``, or an absorbing self-loop,
+    so they never cross an episode boundary or another environment.
+    """
+
+    def __init__(self, observation_space: gym.spaces.Box,
+                 action_space: gym.spaces.Space,
+                 buffer_size: int,
+                 gamma: float = 0.99,
+                 nstep: int = 1,
+                 num_envs: int = 1):
+        super(AbsorbingReplayBuffer, self).__init__(
+            observation_space, action_space, buffer_size, num_envs=num_envs,
+            gamma=gamma, nstep=nstep, onpolicy=False,
+        )
+        for key in ("absorbing", "next_absorbing"):
+            self.buffer_message[key] = {"shape": (num_envs, buffer_size), "dtype": np.float32}
+        self.reset()
+
+    def reset(self):
+        super().reset()
+        self.env_pos = np.zeros(self.num_envs, dtype=np.int64)
+        self.env_full = np.zeros(self.num_envs, dtype=bool)
+        self.pos = 0
+        self.full = False
+
+    def filled(self) -> int:
+        return int(np.where(self.env_full, self.buffer_size, self.env_pos).sum())
+
+    def add(self, batch: dict[str, np.ndarray]):
+        raise NotImplementedError("AbsorbingReplayBuffer stores per-env transitions, use add_transitions")
+
+    def add_transitions(self, batch: dict[str, np.ndarray], env_index: int = 0):
+        """Append a time-major block of transitions to one environment's stream."""
+        n = len(batch['states'])
+        if n == 0:
+            return np.empty(0, dtype=np.int64)
+        if n > self.buffer_size:
+            raise ValueError(f"Cannot add {n} transitions to a buffer of size {self.buffer_size}")
+
+        pos = int(self.env_pos[env_index])
+        indices = (pos + np.arange(n)) % self.buffer_size
+        for key in self.buffer:
+            self.buffer[key][env_index, indices] = batch[key]
+
+        end = pos + n
+        if end >= self.buffer_size:
+            self.env_full[env_index] = True
+        self.env_pos[env_index] = end % self.buffer_size
+        self.pos = int(self.env_pos[0])
+        self.full = bool(self.env_full[0]) if self.num_envs == 1 else bool(np.all(self.env_full))
+        return indices
+
+    def _env_sizes(self) -> np.ndarray:
+        return np.where(self.env_full, self.buffer_size, self.env_pos)
+
+    def _get_indices(self, batch_size: int):
+        sizes = self._env_sizes().astype(np.float64)
+        total = sizes.sum()
+        if total <= 0:
+            raise ValueError("Cannot sample from an empty AbsorbingReplayBuffer")
+        env_indices = np.random.choice(self.num_envs, size=batch_size, p=sizes / total)
+        batch_indices = (np.random.random(batch_size) * sizes[env_indices]).astype(np.int64)
+        return env_indices, batch_indices
+
+    def _loop_indices(self, env_indices: np.ndarray, indices: np.ndarray):
+        pos = self.env_pos[env_indices]
+        full = self.env_full[env_indices]
+        loop = np.where(full, (indices - pos) % self.buffer_size, indices)
+        return loop, pos, full
+
+    def _real_indices(self, loop_indices: np.ndarray, pos: np.ndarray, full: np.ndarray) -> np.ndarray:
+        return np.where(full, (loop_indices + pos) % self.buffer_size, loop_indices)
+
+    def _compute_nstep(self, env_indices: np.ndarray, indices: np.ndarray, batch: dict):
+        loop_indices, pos, full = self._loop_indices(env_indices, indices)
+        end_loop_indices = np.copy(loop_indices)
+        returns = np.copy(batch['rewards'])
+        limit = np.where(full, self.buffer_size, pos)
+
+        batch_size = len(indices)
+        nstep_states = np.zeros((batch_size, self.nstep, *self.buffer['states'].shape[2:]),
+                                dtype=self.buffer['states'].dtype)
+        nstep_actions = np.zeros((batch_size, self.nstep, *self.buffer['actions'].shape[2:]),
+                                 dtype=self.buffer['actions'].dtype)
+        nstep_mask = np.zeros((batch_size, self.nstep), dtype=np.float32)
+        nstep_states[:, 0] = batch['states']
+        nstep_actions[:, 0] = batch['actions']
+        nstep_mask[:, 0] = 1.0
+
+        for i in range(1, self.nstep):
+            end_real = self._real_indices(end_loop_indices, pos, full)
+            outof_range = (end_loop_indices + 1) >= limit
+            stop = (
+                (self.buffer['dones'][env_indices, end_real] > 0)
+                | (self.buffer['truncateds'][env_indices, end_real] > 0)
+                | (self.buffer['absorbing'][env_indices, end_real] > 0)
+            )
+
+            end_loop_indices = end_loop_indices + 1
+            end_loop_indices[np.logical_or(outof_range, stop)] -= 1
+
+            cur_loop = loop_indices + i
+            in_window = cur_loop <= end_loop_indices
+            cur_safe = np.where(in_window, cur_loop, 0)
+            cur_real = self._real_indices(cur_safe, pos, full)
+            returns += (self.gamma ** i) * in_window * self.buffer['rewards'][env_indices, cur_real]
+
+            nstep_mask[:, i] = in_window.astype(np.float32)
+            nstep_states[:, i] = self.buffer['states'][env_indices, cur_real]
+            nstep_actions[:, i] = self.buffer['actions'][env_indices, cur_real]
+
+        end_real_indices = self._real_indices(end_loop_indices, pos, full)
+        batch['rewards'] = returns
+        batch['dones'] = self.buffer['dones'][env_indices, end_real_indices]
+        batch['truncateds'] = self.buffer['truncateds'][env_indices, end_real_indices]
+        batch['next_states'] = self.buffer['next_states'][env_indices, end_real_indices]
+        batch['next_absorbing'] = self.buffer['next_absorbing'][env_indices, end_real_indices]
+        batch['nstep_gamma'] = self.gamma ** (end_loop_indices - loop_indices + 1)
+        batch['nstep_states'] = nstep_states
+        batch['nstep_actions'] = nstep_actions
+        batch['nstep_mask'] = nstep_mask
+        return batch
+
+    def _sample_from_indices(self, env_indices: np.ndarray, batch_indices: np.ndarray) -> dict[str, np.ndarray]:
+        batch = {}
+        for key in self.buffer:
+            batch[key] = self.buffer[key][env_indices, batch_indices]
+        return self._compute_nstep(env_indices, batch_indices, batch)
+
+    def sample(self, batch_size: int) -> dict[str, np.ndarray]:
+        env_indices, batch_indices = self._get_indices(batch_size)
+        return self._sample_from_indices(env_indices, batch_indices)
+
+
 class TrajectoryRollout:
     def __init__(self, observation_space: gym.spaces.Box, 
                  action_space: gym.spaces.Space,
@@ -337,6 +476,7 @@ class ExpertDataset(ReplayBuffer):
                  subsample_frequency:int, 
                  gamma:float=0.99,
                  nstep:int=1,
+                 absorbing:bool=False,
                  ):
         path = Path(file_path)
         suffix = path.suffix.lower()
@@ -403,16 +543,7 @@ class ExpertDataset(ReplayBuffer):
             )
 
         lengths = [len(traj['actions']) for traj in trajectories]
-        self.episode_ends = np.cumsum(lengths) - 1
-
         total_length = sum(lengths)
-
-        num_envs = 1
-        buffer_size = total_length
-
-        super(ExpertDataset, self).__init__(
-            observation_space, action_space, buffer_size, num_envs, gamma, nstep, onpolicy=True, store_u=False
-        )
 
         # Merge subsampled trajectories into the flat ReplayBuffer layout:
         # buffer[key].shape == (num_envs, buffer_size, ...)
@@ -451,25 +582,119 @@ class ExpertDataset(ReplayBuffer):
         if timeouts is None:
             timeouts = np.zeros(total_length, dtype=np.float32)
 
-        self.buffer["states"][0] = np.asarray(observations, dtype=self.buffer["states"].dtype)
-        self.buffer["next_states"][0] = np.asarray(
-            next_observations, dtype=self.buffer["next_states"].dtype
+        observations = np.asarray(observations, dtype=np.float32)
+        next_observations = np.asarray(next_observations, dtype=np.float32)
+        actions = np.asarray(actions, dtype=np.float32)
+        if actions.ndim == 1:
+            actions = actions.reshape(-1, 1)
+        rewards = np.asarray(rewards, dtype=np.float32).reshape(-1)
+        terminals = np.asarray(terminals, dtype=np.float32).reshape(-1)
+        timeouts = np.asarray(timeouts, dtype=np.float32).reshape(-1)
+        log_probs = (
+            np.zeros(total_length, dtype=np.float32)
+            if log_probs is None
+            else np.asarray(log_probs, dtype=np.float32).reshape(-1)
         )
-        expert_actions = np.asarray(actions, dtype=self.buffer["actions"].dtype)
-        if expert_actions.ndim == 1:
-            expert_actions = expert_actions.reshape(-1, 1)
-        self.buffer["actions"][0] = expert_actions
-        self.buffer["rewards"][0] = np.asarray(rewards, dtype=np.float32).reshape(-1)
-        self.buffer["dones"][0] = np.asarray(terminals, dtype=np.float32).reshape(-1)
-        self.buffer["truncateds"][0] = np.asarray(timeouts, dtype=np.float32).reshape(-1)
+
+        self.absorbing = absorbing
+        if absorbing:
+            (observations, next_observations, actions, rewards, terminals,
+             timeouts, log_probs, absorbing_flags, next_absorbing_flags,
+             lengths) = self._wrap_with_absorbing(
+                observations, next_observations, actions, rewards,
+                terminals, timeouts, log_probs, lengths,
+            )
+            total_length = sum(lengths)
+        else:
+            absorbing_flags = np.zeros(total_length, dtype=np.float32)
+            next_absorbing_flags = np.zeros(total_length, dtype=np.float32)
+
+        self.episode_ends = np.cumsum(lengths) - 1
+
+        super(ExpertDataset, self).__init__(
+            observation_space, action_space, total_length, 1, gamma, nstep, onpolicy=True, store_u=False
+        )
+        if absorbing:
+            for key in ("absorbing", "next_absorbing"):
+                self.buffer_message[key] = {"shape": (1, total_length), "dtype": np.float32}
+            self.reset()
+
+        expected_obs_dim = self.buffer["states"].shape[-1]
+        if observations.shape[-1] != expected_obs_dim:
+            raise ValueError(
+                f"Expert observations have {observations.shape[-1]} dimensions but the "
+                f"observation space expects {expected_obs_dim}"
+                + (" (absorbing adds one indicator dimension)" if absorbing else "")
+            )
+
+        self.buffer["states"][0] = observations
+        self.buffer["next_states"][0] = next_observations
+        self.buffer["actions"][0] = actions
+        self.buffer["rewards"][0] = rewards
+        self.buffer["dones"][0] = terminals
+        self.buffer["truncateds"][0] = timeouts
         if "log_probs" in self.buffer:
-            if log_probs is None:
-                self.buffer["log_probs"][0] = np.zeros(total_length, dtype=np.float32)
-            else:
-                self.buffer["log_probs"][0] = np.asarray(log_probs, dtype=np.float32).reshape(-1)
+            self.buffer["log_probs"][0] = log_probs
+        if absorbing:
+            self.buffer["absorbing"][0] = absorbing_flags
+            self.buffer["next_absorbing"][0] = next_absorbing_flags
 
         self.pos = total_length % self.buffer_size
         self.full = total_length >= self.buffer_size
+
+    @staticmethod
+    def _wrap_with_absorbing(observations, next_observations, actions, rewards,
+                             terminals, timeouts, log_probs, lengths):
+        """Rewrite expert episodes in DAC's absorbing-state MDP.
+
+        Every observation gains an indicator bit (0). Every real termination
+        (not a time limit) is scanned — including those that are not the last
+        step of a split trajectory — redirected to the absorbing state, and
+        followed by an absorbing self-loop, matching the policy-side wrap.
+        """
+        obs_dim = observations.shape[-1] + 1
+        absorbing_obs = absorbing_state(obs_dim)
+        absorbing_act = absorbing_action(actions.shape[-1])
+
+        parts = {key: [] for key in (
+            "observations", "next_observations", "actions", "rewards",
+            "terminals", "timeouts", "log_probs", "absorbing", "next_absorbing",
+        )}
+        new_lengths = []
+
+        start = 0
+        for length in lengths:
+            episode = slice(start, start + length)
+            start += length
+
+            pad = np.zeros((length, 1), dtype=np.float32)
+            wrapped = insert_absorbing_self_loops(
+                np.concatenate([observations[episode], pad], axis=1),
+                np.concatenate([next_observations[episode], pad], axis=1),
+                actions[episode],
+                rewards[episode],
+                terminals[episode],
+                timeouts[episode],
+                absorbing_obs,
+                absorbing_act,
+                extras={"log_probs": (log_probs[episode], np.float32(0.0))},
+            )
+            parts["observations"].append(wrapped["states"])
+            parts["next_observations"].append(wrapped["next_states"])
+            parts["actions"].append(wrapped["actions"])
+            parts["rewards"].append(wrapped["rewards"])
+            parts["terminals"].append(wrapped["dones"])
+            parts["timeouts"].append(wrapped["truncateds"])
+            parts["log_probs"].append(wrapped["log_probs"])
+            parts["absorbing"].append(wrapped["absorbing"])
+            parts["next_absorbing"].append(wrapped["next_absorbing"])
+            new_lengths.append(len(wrapped["rewards"]))
+
+        merged = {key: np.concatenate(value, axis=0).astype(np.float32) for key, value in parts.items()}
+        return (merged["observations"], merged["next_observations"], merged["actions"],
+                merged["rewards"], merged["terminals"], merged["timeouts"],
+                merged["log_probs"], merged["absorbing"], merged["next_absorbing"],
+                new_lengths)
         
 
     @staticmethod

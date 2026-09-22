@@ -7,8 +7,8 @@ source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV}"
 
 export SWANLAB_API_KEY=yyKpLHGppV78RFW0p1PNQ
-
-for env in Ant-v5 Hopper-v5 Walker2d-v5 Humanoid-v5 HalfCheetah-v5; do
+# Ant-v5 Hopper-v5 Walker2d-v5 Humanoid-v5 
+for env in Ant-v5; do
     python run_gail.py \
         algorithm=gailppo \
         env=mujoco \
@@ -44,3 +44,4 @@ for env in Ant-v5 Hopper-v5 Walker2d-v5 Humanoid-v5 HalfCheetah-v5; do
         expert_dataset.trajectory_num=10 \
         expert_dataset.subsample_frequency=10 \
         "$@"
+done

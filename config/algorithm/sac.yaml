@@ -32,3 +32,5 @@ state_dependent_std: true
 action_bound_method: tanh
 
 update_log_temp: false
+
+nstep: 1
