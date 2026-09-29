@@ -177,6 +177,7 @@ class BaseAlgorithm(ABC):
                         self.save(pre_fix="best")
                 
                 collected_batch, interact_result = self.interact_with_envs()
+                self.current_epoch = epoch
                 train_result = self.update(collected_batch, self.start_train())
                 if self.train_log_condition(epoch):
                     train_result.add(interact_result)

@@ -41,21 +41,27 @@ class DAC(AILAlgorithm, OffPolicyAlgorithm):
         self.discriminator_gradient_penalty = discriminator_args.discriminator_gradient_penalty
         self.discriminator_train_steps = discriminator_args.discriminator_train_steps
         self.discriminator_batch_size = discriminator_args.discriminator_batch_size
+        self.discriminator_train_interval = args.discriminator_train_interval
 
-        self.discriminator_optimizer = OPTIMIZER_DICT[discriminator_args.discriminator_optimizer](self.discriminator.parameters(), lr=self.disc_lr)
+        if discriminator_args.discriminator_weight_decay > 0:
+            self.discriminator_optimizer = OPTIMIZER_DICT[discriminator_args.discriminator_optimizer](self.discriminator.parameters(), lr=self.disc_lr, weight_decay=discriminator_args.discriminator_weight_decay)
+        else:
+            self.discriminator_optimizer = OPTIMIZER_DICT[discriminator_args.discriminator_optimizer](self.discriminator.parameters(), lr=self.disc_lr)
 
         self.absorbing = bool(getattr(args.env, "absorbing", False))
         self.absorbing_state = absorbing_state(self.observation_space.shape[0])
         self.absorbing_action = absorbing_action(self.action_dim)
         self.absorbing_transitions = 0
+        self.target_gradient_norm = discriminator_args.target_gradient_norm
 
     def update(self, batch, start_train) -> Result:
         result = self._update_buffer(batch)
 
         if start_train:
-            for _ in range(self.update_discriminator_step_per_epoch):
-                discriminator_result = self._update_discriminator()
-            result.add(discriminator_result)
+            if self.current_epoch % self.discriminator_train_interval == 0:
+                for _ in range(self.update_discriminator_step_per_epoch):
+                    discriminator_result = self._update_discriminator()
+                result.add(discriminator_result)
 
             for _ in range(self.update_step_per_epoch):
                 update_policy_log = self._update_policy()
@@ -144,7 +150,7 @@ class DAC(AILAlgorithm, OffPolicyAlgorithm):
         gradient = torch.autograd.grad(outputs=mixed_logits.sum(), inputs=mixed_data, create_graph=True, retain_graph=True, only_inputs=True)[0]
 
         gradient_norm = gradient.norm(2, dim=1)
-        gradient_penalty = self.gradient_penalty_coef*((gradient_norm - 1)**2).mean()
+        gradient_penalty = self.gradient_penalty_coef*((gradient_norm - self.target_gradient_norm)**2).mean()
         return gradient_penalty
 
     def _update_discriminator(self):

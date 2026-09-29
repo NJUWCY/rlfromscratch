@@ -8,7 +8,7 @@ conda activate "${CONDA_ENV}"
 
 export SWANLAB_API_KEY=yyKpLHGppV78RFW0p1PNQ
 # Ant-v5 Hopper-v5 Walker2d-v5 Humanoid-v5 
-for env in Ant-v5; do
+for env in Ant-v5 Hopper-v5 Walker2d-v5 Humanoid-v5; do
     python run_gail.py \
         algorithm=gailppo \
         env=mujoco \

@@ -9,6 +9,8 @@ from torch.distributions.transforms import AffineTransform, TanhTransform
 import math
 
 EPS = 1e-8
+MIN_LOGSTD = -20
+MAX_LOGSTD = 2
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0, initialize=True):
@@ -17,6 +19,13 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0, initialize=True):
     nn.init.orthogonal_(layer.weight, gain=std)
     nn.init.constant_(layer.bias, bias_const)
     return layer
+
+
+def _maybe_spectral_norm(layer, spectral_norm: bool):
+    """Wrap a linearly initialized layer. Spectral norm must come after orthogonal init."""
+    if not spectral_norm:
+        return layer
+    return nn.utils.parametrizations.spectral_norm(layer)
 
 class AtariDQNNetwork(nn.Module):
     def __init__(self, input_shape:Union[tuple, list], num_actions, initialize=False, dueling_network=False, conv_gradient_rescale=False):
@@ -112,16 +121,16 @@ class AtariCNNEncoder(nn.Module):
 
 
 class MLPNetwork(nn.Module):
-    def __init__(self, input_dim:int, output_dim:int, hidden_sizes=[30,], activation=nn.ReLU,initialize=False, last_std=0.01):
+    def __init__(self, input_dim:int, output_dim:int, hidden_sizes=[30,], activation=nn.ReLU,initialize=False, last_std=0.01, spectral_norm=False):
         super(MLPNetwork, self).__init__()
         layers = []
         last_dim = input_dim
         for hidden_size in hidden_sizes:
-            layers.append(layer_init(nn.Linear(last_dim, hidden_size),initialize=initialize))
+            layers.append(_maybe_spectral_norm(layer_init(nn.Linear(last_dim, hidden_size),initialize=initialize), spectral_norm))
             layers.append(activation())
             last_dim = hidden_size
         
-        layers.append(layer_init(nn.Linear(last_dim, output_dim),initialize=initialize, std=last_std))
+        layers.append(_maybe_spectral_norm(layer_init(nn.Linear(last_dim, output_dim),initialize=initialize, std=last_std), spectral_norm))
         self.net = nn.Sequential(*layers)
     
     def forward(self, x):
@@ -259,7 +268,7 @@ class DiagGaussianActor(Actor):
         else:
             log_sigma = self.log_sigma
         if self.clip_sigma:
-            log_sigma = log_sigma.clamp(min=-10, max=2)
+            log_sigma = log_sigma.clamp(min=MIN_LOGSTD, max=MAX_LOGSTD)
         sigma = torch.exp(log_sigma)
         if not self.state_dependent_std:
             sigma = sigma.expand_as(mu)
@@ -320,20 +329,21 @@ class TanhGaussianActor(Actor):
                  hidden_sizes=[64, 64], 
                  activation=torch.nn.Tanh, 
                  initialize=False,
-                 initial_log_sigma:float=0.0):
+                 initial_log_sigma:float=0.0,
+                 last_std:float=0.01):
         super(TanhGaussianActor, self).__init__(observation_space, action_space)
 
-        self.mu = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize, 0.01)
+        self.mu = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize, last_std)
         # you can use network to compute the log_sigma according to the state
         self.state_dependent_std = state_dependent_std
         if state_dependent_std:
-            self.log_sigma = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize,0.01)
+            self.log_sigma = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize,last_std)
         else:
             self.log_sigma = nn.Parameter(
                 torch.full(
                     size=(1, action_space.shape[0]),
                     fill_value=float(initial_log_sigma),
-                )                                                   ##
+                )                                                  
             )
         self.clip_sigma = clip_sigma
         self.device = device
@@ -349,7 +359,7 @@ class TanhGaussianActor(Actor):
         else:
             log_sigma = self.log_sigma
         if self.clip_sigma:
-            log_sigma = log_sigma.clamp(min=-10, max=2)
+            log_sigma = log_sigma.clamp(min=MIN_LOGSTD, max=MAX_LOGSTD)
         sigma = torch.exp(log_sigma)
         if not self.state_dependent_std:
             sigma = sigma.expand_as(mu)

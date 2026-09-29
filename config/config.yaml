@@ -30,6 +30,7 @@ total_epoch: 5000000
 interact_per_epoch: 4
 update_step_per_epoch: 1
 update_discriminator_step_per_epoch: 1
+discriminator_train_interval: 1
 test_episodes: 10
 train_action_deterministic: true
 start_train_step: 5000

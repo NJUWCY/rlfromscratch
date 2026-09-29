@@ -110,7 +110,7 @@ class SAC(OffPolicyAlgorithm):
                     # why here use the log_temp instead of temp?
                     temp_loss = -self.log_temp * (control * (log_probs.detach()+self.target_entropy)).sum()/control.sum()
                 else:
-                    temp_loss = self.log_temp.exp() * (control * (log_probs.detach()+self.target_entropy)).sum()/control.sum()
+                    temp_loss = -self.log_temp.exp() * (control * (log_probs.detach()+self.target_entropy)).sum()/control.sum()
                 self.temp_optimizer.zero_grad()
                 temp_loss.backward()
                 self.temp_optimizer.step()

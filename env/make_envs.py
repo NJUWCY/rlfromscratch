@@ -143,11 +143,13 @@ if __name__ == "__main__":
     # just use this to test the envs
     def make_easy_test():
         # TODO: add more envs except for atari envs 
-        env = gym.make('ALE/Breakout-v5')
+        env = gym.make('Humanoid-v5')
         env = atari_wrap(env, episode_life=True, clip_rewards=False, frame_stack=4, scale=False)
         return env
     
-    env = gym.make('BreakoutNoFrameskip-v4')
+    env = gym.make('Humanoid-v5')
+    print(env.action_space)
+    exit()
     env = atari_wrap(env, episode_life=True, clip_rewards=False, frame_stack=4, scale=False)
     action = 3
     obs = env.reset()
