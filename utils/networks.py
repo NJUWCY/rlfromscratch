@@ -376,45 +376,36 @@ class TanhGaussianActor(Actor):
         return dist
 
     
-    def get_action(self, states:torch.Tensor,deterministic:bool):
-        """
-        states: torch.Tensor:(batch, state_dim)
-        deterministic: bool
-        output: actions:torch.Tensor:(batch, action_dim), log_probs:torch.Tensor:(batch,)
-        note: the actions is clipped, each of the output can not compute the gradient
-        """
-        mu,std = self.forward(states)
-        raw_dist = Independent(Normal(mu,std), 1)
-        
-        if deterministic:
-            u = raw_dist.mean
+    def _log_prob_from_pre_tanh(self, raw_dist: Independent, u: torch.Tensor):
+        # Compute the tanh Jacobian from u to retain accuracy and gradients
+        # even when tanh(u) rounds to +/-1.
+        log_det = 2.0 * (math.log(2.0) - u - F.softplus(-2.0 * u))
+        return raw_dist.log_prob(u) - log_det.sum(-1) - torch.log(self.scale).sum()
 
-        else:
-            u = raw_dist.rsample()
-        
-        # clamp the action within action range and avoid the log_prob=nan
-        actions = torch.tanh(u)*self.scale + self.loc
-        log_probs = raw_dist.log_prob(u) - torch.log(1-torch.tanh(u).pow(2)+EPS).sum(-1, keepdim=False)-torch.log(self.scale).sum()
+    def get_action(self, states:torch.Tensor, deterministic:bool):
+        """Return squashed/scaled actions, log-probs and pre-tanh samples."""
+        mu, std = self.forward(states)
+        raw_dist = Independent(Normal(mu, std), 1)
+        u = raw_dist.mean if deterministic else raw_dist.rsample()
+        actions = torch.tanh(u) * self.scale + self.loc
+        log_probs = self._log_prob_from_pre_tanh(raw_dist, u)
         return actions, log_probs, u
-    
-    
+
     def get_log_prob(self, states:torch.Tensor, actions:torch.Tensor, u:torch.Tensor=None):
+        """Evaluate action log-probs, using pre-tanh samples when available.
+
+        Without u, boundary actions are approximated by representable interior
+        values: a saturated action cannot uniquely recover its original sample.
         """
-        states: torch.Tensor:(batch, state_dim)
-        actions: torch.Tensor:(batch, action_dim)
-        output: torch.Tensor:(batch,)
-        """
-        if u is not None:
-            mu,std = self.forward(states)
-            raw_dist = Independent(Normal(mu,std), 1)
-            log_probs = raw_dist.log_prob(u) - torch.log(1-torch.tanh(u).pow(2)+EPS).sum(-1, keepdim=False)-torch.log(self.scale).sum()
-            return log_probs
-        else:
-            actions = torch.clamp(actions, self.low+EPS, self.high-EPS) # this is to avoid log_prob=nan
-            dist = self.get_dist(states)
-            log_probs = dist.log_prob(actions)
-            return log_probs
-    
+        mu, std = self.forward(states)
+        raw_dist = Independent(Normal(mu, std), 1)
+        if u is None:
+            normalized_actions = (actions - self.loc) / self.scale
+            eps = torch.finfo(normalized_actions.dtype).eps
+            normalized_actions = normalized_actions.clamp(-1.0 + eps, 1.0 - eps)
+            u = torch.atanh(normalized_actions)
+        return self._log_prob_from_pre_tanh(raw_dist, u)
+
     def get_entropy(self, states:torch.Tensor):
         """
         states: torch.Tensor:(batch, state_dim)

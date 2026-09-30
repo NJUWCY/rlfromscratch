@@ -20,7 +20,7 @@ export TQDM_MININTERVAL=60
 export RES_OPTIONS="${RES_OPTIONS:-ndots:1}"
 # online | offline | disabled. Use offline on unreliable networks and upload later
 # with: swanlab sync <run-dir>
-export SWANLAB_MODE="${SWANLAB_MODE:-offline}"
+
 
 # 8 concurrent jobs spread round-robin over 2 GPUs (4 jobs per GPU).
 exec python parallel_search.py \

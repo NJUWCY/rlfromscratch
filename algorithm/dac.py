@@ -43,11 +43,8 @@ class DAC(AILAlgorithm, OffPolicyAlgorithm):
         self.discriminator_batch_size = discriminator_args.discriminator_batch_size
         self.discriminator_train_interval = args.discriminator_train_interval
 
-        if discriminator_args.discriminator_weight_decay > 0:
-            self.discriminator_optimizer = OPTIMIZER_DICT[discriminator_args.discriminator_optimizer](self.discriminator.parameters(), lr=self.disc_lr, weight_decay=discriminator_args.discriminator_weight_decay)
-        else:
-            self.discriminator_optimizer = OPTIMIZER_DICT[discriminator_args.discriminator_optimizer](self.discriminator.parameters(), lr=self.disc_lr)
-
+        self.discriminator_optimizer = OPTIMIZER_DICT[discriminator_args.discriminator_optimizer](self.discriminator.parameters(), lr=self.disc_lr, weight_decay=discriminator_args.discriminator_weight_decay)
+        
         self.absorbing = bool(getattr(args.env, "absorbing", False))
         self.absorbing_state = absorbing_state(self.observation_space.shape[0])
         self.absorbing_action = absorbing_action(self.action_dim)
@@ -154,6 +151,7 @@ class DAC(AILAlgorithm, OffPolicyAlgorithm):
         return gradient_penalty
 
     def _update_discriminator(self):
+        self.discriminator.train()
         with Result("discriminator") as result:
             for _ in range(self.discriminator_train_steps):
                 policy_batch = self.buffer.sample(self.discriminator_batch_size)
@@ -192,18 +190,24 @@ class DAC(AILAlgorithm, OffPolicyAlgorithm):
         actions = np.asarray(batch['nstep_actions'], dtype=np.float32)
         mask = np.asarray(batch['nstep_mask'], dtype=np.float32)
         batch_size, nstep = mask.shape
-        rewards = self.discriminator.predict_reward(
-            states.reshape(batch_size * nstep, -1),
-            actions.reshape(batch_size * nstep, -1),
-        )
+        was_training = self.discriminator.training
+        self.discriminator.eval()
+        try:
+            # no_grad alone does not freeze spectral-normalization buffers.
+            with torch.no_grad():
+                rewards = self.discriminator.predict_reward(
+                    states.reshape(batch_size * nstep, -1),
+                    actions.reshape(batch_size * nstep, -1),
+                )
+        finally:
+            self.discriminator.train(was_training)
         rewards = np.asarray(rewards, dtype=np.float32).reshape(batch_size, nstep)
         discounts = self.gamma ** np.arange(nstep, dtype=np.float32)
         return (rewards * mask * discounts).sum(axis=1)
 
     def _update_policy(self):
         batch = self.buffer.sample(self.batch_size)
-        with torch.no_grad():
-            rewards = self._nstep_discriminator_rewards(batch)
+        rewards = self._nstep_discriminator_rewards(batch)
         batch['rewards'] = np.asarray(rewards, dtype=np.float32).reshape(-1)
 
         result = self._sac_update(batch)

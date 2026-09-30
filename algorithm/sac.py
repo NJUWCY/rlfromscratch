@@ -98,22 +98,28 @@ class SAC(OffPolicyAlgorithm):
             
             rsample_actions, log_probs, u = self.agent.resample_action(states)
             control = 1 - absorbing.squeeze(1)
+            has_nonabsorbing = bool((control > 0).any().item())
+            normalizer = control.sum().clamp_min(1.0)
 
             q = self.agent.get_q_function(states, rsample_actions).squeeze(1)
-            actor_loss = (control * (self.log_temp.detach().exp() * log_probs - q)).sum()/control.sum()
-            self.actor_optimizer.zero_grad()
-            actor_loss.backward()
-            self.actor_optimizer.step()
+            actor_loss = (control * (self.log_temp.detach().exp() * log_probs - q)).sum()/normalizer
+            # Skip optimizer steps too: Adam momentum can move parameters even
+            # with zero gradients when the batch contains only absorbing states.
+            if has_nonabsorbing:
+                self.actor_optimizer.zero_grad()
+                actor_loss.backward()
+                self.actor_optimizer.step()
 
             if self.learn_temp:
                 if self.update_log_temp:
                     # why here use the log_temp instead of temp?
-                    temp_loss = -self.log_temp * (control * (log_probs.detach()+self.target_entropy)).sum()/control.sum()
+                    temp_loss = -self.log_temp * (control * (log_probs.detach()+self.target_entropy)).sum()/normalizer
                 else:
-                    temp_loss = -self.log_temp.exp() * (control * (log_probs.detach()+self.target_entropy)).sum()/control.sum()
-                self.temp_optimizer.zero_grad()
-                temp_loss.backward()
-                self.temp_optimizer.step()
+                    temp_loss = -self.log_temp.exp() * (control * (log_probs.detach()+self.target_entropy)).sum()/normalizer
+                if has_nonabsorbing:
+                    self.temp_optimizer.zero_grad()
+                    temp_loss.backward()
+                    self.temp_optimizer.step()
             
 
             if self.use_target:

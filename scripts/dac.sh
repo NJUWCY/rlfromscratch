@@ -11,7 +11,7 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 
 # DAC: off-policy adversarial imitation (GAIL discriminator + SAC + absorbing states).
 # One environment, one gradient step per environment step, as in the DAC paper.
-for env in Humanoid-v5; do
+for env in Ant-v5 HalfCheetah-v5 Hopper-v5 Walker2d-v5; do
     python run_dac.py \
         algorithm=dacsac \
         env=mujoco \
@@ -46,7 +46,7 @@ for env in Humanoid-v5; do
         algorithm.discriminator.gradient_penalty_coef=10.0 \
         expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/sac_${env}_newest_100eps_min_reward_0.hdf5 \
         expert_dataset.trajectory_num=10 \
-        expert_dataset.subsample_frequency=1 \
+        expert_dataset.subsample_frequency=10 \
         algorithm.discriminator.reward_function=AIRL \
         "$@"
 done

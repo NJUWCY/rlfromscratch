@@ -60,7 +60,6 @@ def main(cfg: DictConfig):
     # Match the reference DAC nets: orthogonal hidden gain sqrt(2) for ReLU,
     # and output gain 1. Spectral norm is discriminator-only.
     orthogonal_init = bool(getattr(rl_args, "initialize", False))
-    output_gain = 1.0 if orthogonal_init else 0.01
     if rl_args.action_bound_method != "tanh":
         raise ValueError(f"DAC requires a squashed Gaussian policy, got action_bound_method={rl_args.action_bound_method}")
     actor = TanhGaussianActor(
@@ -71,12 +70,11 @@ def main(cfg: DictConfig):
         state_dependent_std=rl_args.state_dependent_std,
         hidden_sizes=rl_args.hidden_sizes,
         activation=activation,
-        initialize=orthogonal_init,
-        last_std=output_gain,
+        initialize=orthogonal_init
     )
 
     critic_class = DoubleQFunction if rl_args.double_critic else QFunction
-    critic_kwargs = dict(hidden_sizes=rl_args.hidden_sizes, activation=activation, initialize=orthogonal_init, last_std=output_gain)
+    critic_kwargs = dict(hidden_sizes=rl_args.hidden_sizes, activation=activation, initialize=orthogonal_init)
     critic = critic_class(training_envs.observation_space, training_envs.action_space, MLPNetwork, **critic_kwargs)
     target_critic = critic_class(training_envs.observation_space, training_envs.action_space, MLPNetwork, **critic_kwargs) if rl_args.use_target else None
 
@@ -98,7 +96,6 @@ def main(cfg: DictConfig):
                                    hidden_sizes=discriminator_args.discriminator_hidden_sizes,
                                    activation=ACTIVATION_DICT[discriminator_args.discriminator_activation],
                                    initialize=orthogonal_init,
-                                   last_std=output_gain,
                                    spectral_norm=bool(getattr(discriminator_args, "spectral_norm", False)))
 
     discriminator = GAILDiscriminator(training_envs.observation_space,
