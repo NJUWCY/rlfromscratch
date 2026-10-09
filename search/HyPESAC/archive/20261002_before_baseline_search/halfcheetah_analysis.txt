@@ -1,0 +1,140 @@
+HalfCheetah-v5 HyPE 诊断与搜参说明（2026-10-01）
+
+默认自动执行三个阶段（顺序执行，阶段内部并行）
+  直接运行以下命令即可，不需要手动选择候选目录：
+
+bash /home/ubuntu/wangchenyang/rlzero/rlfromscratch/search/HyPESAC/halfcheetah_param_search.sh
+
+  第一阶段 12 组、每组约 30 万 SAC 步，结束后自动按最后 3 次评估均值选出候选；
+  第二阶段继承该候选的超参数，再搜索 16 组、每组约 30 万 SAC 步；
+  第三阶段继承第二阶段选中配置，以 seed=0、1、2 各自从头训练 100 万 SAC 步。
+  继承的是超参数，不是从前一阶段 checkpoint 继续训练。
+  前两阶段允许部分组合失败，仅从完成预算、评估足够且指标有限的运行中选择。
+  如果没有合格候选则停止；第三阶段有失败/不完整运行或重复种子，也会报错停止。
+  最后报告三个种子的末期回报均值和标准差，不会只挑表现最好的种子报告。
+  默认最多 8 个并行任务，GPU 0、1 各 4 个；第三阶段仅 3 个任务。
+
+  总输出目录：
+  /home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/HyPESAC-HalfCheetah-pipeline-search/<时间>-<进程号>/
+  其中 01_critic、02_stability、03_confirm 分别存三个阶段的结果。
+  各阶段有 search_spec.json（实际搜索配置）、summary.csv；前两阶段还有 best.json
+  记录选中的候选。继承后的 search_spec.json 记录 source_run，便于追溯。
+  --log-dir 指定上述总目录，需使用新目录；不会覆盖已有阶段目录。
+  --dry-run 预览第一阶段命令及后续选择流程，不会伪造尚不存在的最优配置。
+  --limit/--start/--shuffle/--seed 仅影响前两个网格，第三阶段仍跑三个种子。
+  Hydra 的 key=value 覆盖作用于所有阶段（包括 total_epoch）；自动模式不允许
+  seed=... 覆盖，以免把第三阶段三个种子变成同一个种子。
+  若只执行某个阶段，仍可使用 --stage critic|stability|confirm，见下文。
+
+检查对象
+  /home/ubuntu/wangchenyang/rlzero/rlfromscratch/scripts/hype.sh
+  /home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/HalfCheetah-v5-HyPESAC/2026-09-30_19-32-17
+
+已经观察到的事实
+1. 当前库的评估回报先提高后退化：最高约 1896.85，最后一次约 252.55。
+   日志中的横轴包含 SAC 采集和额外判别器 rollout，不能直接当作 SAC 步数。
+2. 已记录的 critic/q_loss 最大约 1.554e9；critic/q_value 是在采样状态的
+   当前策略动作上计算的 Q 均值，最大约 126972，末期仍约 27717。
+   同期 discriminator/reward_mean 约在 -0.007 到 2.746 之间。
+   这支持“Q 估计失稳/外推过高”的判断，不支持仅用奖励整体变大解释 Q 的增长。
+   仅凭均值日志无法证明唯一根因或给所有状态的真实价值设置上界。
+3. 温度最大约 11.49、末期约 7.14；熵后期大体在 -6 附近。
+   HalfCheetah 有 6 个动作维度，target_entropy=-1 为每维设置，总目标为 -6。
+   当前代码的温度损失符号与这个目标相符，不能把大温度直接解释成符号错误。
+4. 原专家文件含 100 条完整轨迹，平均真实回报约 12533（范围 4897～13040）；
+   观测 17 维、动作 6 维、动作在 [-1,1] 内，所有观测有限，非终止处的
+   next_observation 与下一条 observation 连续。训练仍只随机选择其中 5 条。
+5. Garage v5 对照运行也有退化：
+   outputs/garage/experiment_logs/hype-v5/HalfCheetah-v5/2026-10-01_00-13-02-654550-seed0
+   评估峰值约 3944.05、最后约 -21.32，已记录 critic loss 峰值约 2.499e5。
+   两套运行的专家抽样、初始化、评估和训练细节不完全相同，这不是严格对照实验，
+   但说明不能把所有失败简单归结为当前库相对 Garage 的实现差异。
+
+优先怀疑的机制（待对照实验验证）
+1. 当前 actor/critic 使用 OAdam，学习率 7.3e-4，tau=0.02，收集 64 步后连续
+   更新 64 次。组合可能过于激进；错误 Q 通过 bootstrap 和策略优化被放大。
+   先比较 Adam/OAdam、较低学习率及较慢 target 更新。
+2. 专家比例从 0.2 衰减到 0.01。在 batch=256 时，末期仅约 2 条专家转移。
+   专家状态上的策略动作没有直接专家动作监督，Q 外推和策略分布偏移仍可能发生。
+   保持 0.2 或 0.5 的比例是需要检验的候选方案，不是已经验证的修复。
+3. 判别器每 157 个 epoch（10048 个 SAC 交互步）只更新 1 次，每轮重新创建
+   OAdam，并使用 disc_lr/max(1,round)。100 万步中约 99 轮，末期学习率约 8e-6。
+   奖励对变化中的策略可能跟进不足；频率和每轮训练次数值得比较。
+   增加更新频率也会让“按轮数衰减”更快，因此不能孤立解释该变量的因果影响。
+4. 未开启观测归一化；专家各维绝对值范围约 1 到 33，GP 作用于原始输入坐标。
+   这可能影响判别器，但本次不直接搜索 obs_norm，避免引入在线 replay 中历史
+   归一化状态与当前统计量不一致的额外问题。
+
+排查结果与范围
+  HalfCheetah 的动作范围已经是 [-1,1]，不涉及 Humanoid 的 0.4 缩放问题。
+  target critic 构造后会通过 SACAgent._target_hard_update() 同步权重。
+  本次只添加 search/HyPESAC 下文件，不修改 hype.sh、HyPE 或公共 SAC 的默认行为。
+  不把当前候选参数称为“最佳参数”；需要真实搜参和多种子验证。
+
+运行环境与通用选项
+  脚本自动激活 rlzero，默认 8 个并行任务、GPU 0、1 每卡 4 个；不会读取 api.txt 或启用云日志。
+  --workers 8 --gpus 0,0,0,0,1,1,1,1 在两块可用 GPU 上并行，每卡 4 个实验。
+  --dry-run 仅预览命令；--limit N 限制组合数；--shuffle --seed N 改变搜索顺序。
+  --start N 跳过前 N 个组合，不是恢复某个模型的训练。
+  --log-dir 必须使用新的阶段目录；自动模式下是总目录，脚本会创建三个阶段子目录。
+  末尾可追加 Hydra 参数；覆盖正在搜索的参数会使多个组合实际相同，应避免。
+  当前检查时 RLfromscratchlook 连接被拒绝，RLfromscratch 的 nvidia-smi 返回
+  NVML 错误。因此本次不启动 GPU 搜参；正式运行前应使用 GPU 可用的服务器。
+
+第一阶段：critic 稳定性（12 组）
+  actor/critic 优化器：OAdam、Adam（同一组使用相同优化器）。
+  actor/critic/温度学习率：7.3e-4、3e-4、1e-4（同一组相同，温度仍用 Adam）。
+  target_update_tau：0.02、0.005。
+  其余保持当前 HyPE 设置，包括 64 次 SAC 更新、原来的专家比例衰减计划。
+  这是联合学习率搜索，不能据此单独归因于 critic 或 actor 学习率。
+  seed=0，5 条完整专家轨迹；每组 4688*64=300032 个 SAC 采集步。以下命令用于手动单独运行第一阶段。
+
+bash /home/ubuntu/wangchenyang/rlzero/rlfromscratch/search/HyPESAC/halfcheetah_param_search.sh --stage critic --dry-run
+bash /home/ubuntu/wangchenyang/rlzero/rlfromscratch/search/HyPESAC/halfcheetah_param_search.sh --stage critic --workers 8 --gpus 0,0,0,0,1,1,1,1
+
+  30 万步是筛选预算。policy_lr_decay 在该预算内衰减到零，与原百万步学习率
+  时间表不同；它不是原训练前 30 万步的精确截取。末期排名只能用于挑候选。
+
+汇总结果
+  把下面的 <sweep目录> 替换为输出中的 Sweep dir。
+
+/home/ubuntu/wangchenyang/anaconda/envs/rlzero/bin/python /home/ubuntu/wangchenyang/rlzero/rlfromscratch/search/HyPESAC/halfcheetah_search_tools.py summarize <sweep目录>
+
+  生成 summary.csv，默认按最后 3 次非初始评估的平均回报排序，列出峰值 Q loss、
+  Q 均值绝对值峰值、温度、实际 SAC 采集步数和相关参数。
+  只有达到预算、有足够评估、所检查指标没有 NaN/Inf 的运行才进入候选排名。
+  Q 偏大但有限的运行不会被自动删掉，仍需看曲线判断是否退化。
+  检查指标是已记录值，不等价于检查了每一个梯度步。
+
+第二阶段：更新次数、判别器与专家比例（16 组）
+  update_step_per_epoch：16、64，即 UTD 约 0.25 或 1。
+  discriminator_train_interval：157、32，即每 10048 或 2048 个 SAC 步更新。
+  discriminator_train_steps：1、5。
+  专家混合比例：固定 0.2、固定 0.5。
+  固定比例使比较 UTD 时不会同时改变按“梯度步数”衰减的专家比例。
+  --from-run 应指定第一阶段某个候选的运行目录，自动继承其超参数；
+  第二阶段的 4 个搜索轴仍由网格控制，训练预算、日志目录和 seed 不继承。
+
+bash /home/ubuntu/wangchenyang/rlzero/rlfromscratch/search/HyPESAC/halfcheetah_param_search.sh --stage stability --from-run <候选运行目录> --workers 8 --gpus 0,0,0,0,1,1,1,1
+
+  未给 --from-run 时使用 Adam、3e-4、tau=0.005 的待验证默认候选。
+  原有的判别器按轮数衰减和每轮重置优化器仍保留。
+  更频繁的判别器更新会增加额外环境 rollout；比较样本效率时不能只比较 SAC 步数。
+  HalfCheetah 默认每次 rollout 为 4*1000 步，300032 SAC 步时：
+  interval=157 约额外 116000 步，interval=32 约额外 584000 步。
+
+第三阶段：完整预算、多种子复核（3 组）
+  必须 --from-run 指定选中的候选；继承其 SAC、判别器、混合采样超参数。
+  每组 1000000 个 SAC 采集步，seed=0、1、2，每个种子仍只使用 5 条专家轨迹。
+  更换种子也会改变抽到的专家子集。比较末期表现及多个种子的稳定性。
+
+bash /home/ubuntu/wangchenyang/rlzero/rlfromscratch/search/HyPESAC/halfcheetah_param_search.sh --stage confirm --from-run <候选运行目录> --workers 8 --gpus 0,0,0,0,1,1,1,1
+
+输出与日志
+  outputs/HyPESAC-HalfCheetah-<critic|stability|confirm>-search/<时间>/<参数组合>/
+  每个组合分别保存 .hydra 配置、stdout.log、TensorBoard、best/newest_model.pth。
+  train_log_interval=1，让每次判别器更新都有日志。旧配置 16 和判别器周期 157
+  的交集很少，旧日志只有 6 条判别器记录，不代表判别器实际上只更新了 6 次。
+  test_interval=156，约每 9984 个 SAC 采集步评估 10 条轨迹。
+  当前训练循环在 epoch 开始时评估/按间隔保存，不额外保证最后一步保存或评估。
+  脚本会自动挑选阶段候选并传递超参数，但不回写 hype.sh，也不进行任何 Git 提交或推送。

@@ -1,0 +1,32 @@
+{
+  "run_script": "search/HyPESAC/run_hype_search.py",
+  "sweep_name": "HyPESAC-HalfCheetah-further-round1",
+  "fixed_overrides": [
+    "env.name=HalfCheetah-v5",
+    "algorithm.rl.target_update_tau=0.02",
+    "algorithm.rl.actor_optimizer=${algorithm.rl.critic_optimizer}",
+    "algorithm.reset_policy_timesteps=false",
+    "algorithm.policy_lr_decay=true",
+    "algorithm.rl.common_net=false",
+    "algorithm.rl.initialize=true",
+    "algorithm.rl.critic_loss_coef=1.0",
+    "algorithm.discriminator.discriminator_initialization=orthogonal_relu",
+    "algorithm.discriminator.discriminator_output_gain=1.0"
+  ],
+  "search_space": {
+    "algorithm.sampling_schedule": [
+      "[[0.025,0.025,1000000]]",
+      "[[0.05,0.05,1000000]]",
+      "[[0.075,0.075,1000000]]"
+    ],
+    "algorithm.rl.critic_optimizer": [
+      "OAdam",
+      "Adam"
+    ],
+    "seed": [
+      0,
+      1,
+      2
+    ]
+  }
+}

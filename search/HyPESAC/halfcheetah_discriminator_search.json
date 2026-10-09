@@ -1,0 +1,23 @@
+{
+  "run_script": "search/HyPESAC/run_hype_search.py",
+  "sweep_name": "HyPESAC-HalfCheetah-discriminator-search",
+  "fixed_overrides": [
+    "env.name=HalfCheetah-v5"
+  ],
+  "search_space": {
+    "algorithm.discriminator.discriminator_train_steps": [
+      1,
+      2
+    ],
+    "algorithm.discriminator.gradient_penalty_coef": [
+      10,
+      30,
+      100
+    ],
+    "seed": [
+      0,
+      1,
+      2
+    ]
+  }
+}

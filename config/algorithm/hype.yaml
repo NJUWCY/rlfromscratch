@@ -1,0 +1,19 @@
+name: HyPE
+reward_function: HyPE
+disc_lr: 8e-4
+discriminator_optimizer: OAdam
+discriminator_hidden_sizes: [256, 256]
+discriminator_activation: relu
+discriminator_weight_decay: 0.0
+discriminator_output_gain: 1.0
+# Independent of rl.initialize. default: Linear defaults; orthogonal_relu:
+# sqrt(2) hidden gain and zero biases; orthogonal: gain-1 hidden weights and
+# default biases. Both orthogonal modes use output_gain for the final weights.
+discriminator_initialization: orthogonal_relu
+spectral_norm: false
+discriminator_gradient_penalty: true
+gradient_penalty_coef: 10.0
+target_gradient_norm: 0.4
+discriminator_train_steps: 1
+discriminator_batch_size: 4096
+rollout_episodes: 4

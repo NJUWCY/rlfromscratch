@@ -64,7 +64,7 @@ class DiscriminatorBase(nn.Module, ABC):
 
 
 # TODO: add visual input support for discriminator, currently only support vector input
-REWARD_FUNCTIONS = ("GAIL", "AIRL", "FAIRL")
+REWARD_FUNCTIONS = ("GAIL", "AIRL", "FAIRL", "HyPE")
 
 
 class GAILDiscriminator(DiscriminatorBase):
@@ -86,6 +86,9 @@ class GAILDiscriminator(DiscriminatorBase):
             D = nn.functional.sigmoid(logits)
             # Strictly positive survival bonus, the usual choice for DAC.
             rewards = -torch.log(1-D)
+        elif self.reward_function == "HyPE":
+            # HyPE learns an unbounded cost f(s, a); the policy reward is -f.
+            rewards = -logits
         else:
             # log D - log(1 - D)=logits, i.e. the discriminator logits.
             rewards = logits

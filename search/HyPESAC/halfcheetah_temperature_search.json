@@ -1,0 +1,19 @@
+{
+  "run_script": "search/HyPESAC/run_hype_search.py",
+  "sweep_name": "HyPESAC-HalfCheetah-temperature-search",
+  "fixed_overrides": [
+    "env.name=HalfCheetah-v5"
+  ],
+  "search_space": {
+    "algorithm.rl.temp_lr": [
+      0.00073,
+      0.0003,
+      0.0001
+    ],
+    "seed": [
+      0,
+      1,
+      2
+    ]
+  }
+}

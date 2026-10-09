@@ -15,6 +15,7 @@ from .td3 import TD3
 from .gail import GAIL, GAILPPO, GAILTRPO
 from .airl import AIRL, AIRLPPO, AIRLTRPO
 from .dac import DAC, DACSAC
+from .hype import HyPE, HyPESAC
 
 
 ALGORITHM_DICT = {
@@ -32,4 +33,6 @@ ALGORITHM_DICT = {
     "AIRLTRPO": AIRLTRPO,
     "DAC": DACSAC,
     "DACSAC": DACSAC,
+    "HyPE": HyPESAC,
+    "HyPESAC": HyPESAC,
 }

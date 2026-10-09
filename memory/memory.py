@@ -168,6 +168,45 @@ class ReplayBuffer:
         batch_indices = self._get_indices(batch_size)
         return self._sample_from_indices(batch_indices)
 
+    @staticmethod
+    def _one_step_mixed_batch(batch):
+        """Use the same one-step fields for replay and expert transitions."""
+        result = {key: np.asarray(batch[key], dtype=np.float32) for key in
+                  ('states', 'actions', 'next_states', 'rewards', 'dones',
+                   'truncateds', 'nstep_gamma')}
+        count = len(result['states'])
+        for key in ('absorbing', 'next_absorbing'):
+            result[key] = np.asarray(batch.get(key, np.zeros(count)), dtype=np.float32)
+        result['nstep_states'] = result['states'][:, None].copy()
+        result['nstep_actions'] = result['actions'][:, None].copy()
+        result['nstep_mask'] = np.ones((count, 1), dtype=np.float32)
+        return result
+
+    def sample_mixed(self, batch_size: int, expert_buffer, expert_ratio: float) -> dict[str, np.ndarray]:
+        """Mix one-step replay and expert data; the algorithm controls the ratio.
+
+        Keep exactly batch_size transitions, with online rows first. The
+        expert_mask lets the caller preprocess raw expert observations.
+        Ordinary sample() calls and their return fields are unchanged.
+        """
+        if self.nstep != 1 or expert_buffer.nstep != 1:
+            raise ValueError("Mixed replay/expert sampling requires nstep=1")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        if not np.isfinite(expert_ratio) or not 0 <= expert_ratio <= 1:
+            raise ValueError("expert_ratio must be finite and in [0, 1]")
+        expert_count = int(batch_size * expert_ratio)
+        policy_count = batch_size - expert_count
+        parts = []
+        if policy_count:
+            parts.append(self._one_step_mixed_batch(self.sample(policy_count)))
+        if expert_count:
+            parts.append(self._one_step_mixed_batch(expert_buffer.sample(expert_count)))
+        batch = {key: np.concatenate([part[key] for part in parts], axis=0)
+                 for key in parts[0]}
+        batch['expert_mask'] = np.arange(batch_size) >= policy_count
+        return batch
+
 
     def reset(self):
         """ clear the replay buffer."""

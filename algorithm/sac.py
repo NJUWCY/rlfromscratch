@@ -25,6 +25,9 @@ class SAC(OffPolicyAlgorithm):
         
        
         self.batch_size = algo_args.batch_size
+        self.critic_loss_coef = float(getattr(algo_args, "critic_loss_coef", 1.0))
+        if not math.isfinite(self.critic_loss_coef) or self.critic_loss_coef <= 0:
+            raise ValueError("critic_loss_coef must be finite and positive")
         
 
         self.agent = agent
@@ -85,7 +88,7 @@ class SAC(OffPolicyAlgorithm):
             td_error2 = target - q2
             
 
-            q_loss = torch.mean(td_error1**2) + torch.mean(td_error2**2)
+            q_loss = self.critic_loss_coef * (torch.mean(td_error1**2) + torch.mean(td_error2**2))
             
             # do gradient update to the agent 
             self.critic_optimizer.zero_grad()

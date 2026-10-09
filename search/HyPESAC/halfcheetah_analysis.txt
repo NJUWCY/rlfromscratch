@@ -1,0 +1,111 @@
+HalfCheetah-v5 HyPE 搜参说明（2026-10-02）
+
+设计
+  所有任务实际通过 run_hype_search.py 调用 scripts/hype.sh。
+  JSON 仅指定 HalfCheetah-v5 和该组搜索轴，不复制或覆盖其余训练默认值。
+  hype.sh、训练代码和 YAML 默认配置均不修改。
+  每个单项搜索 SH 只有 5 行，共用 halfcheetah_search_common.sh 启动。
+
+  所有实验默认均为 15625 × 64 = 1000000 个 SAC 采集步；使用原学习率衰减、
+  5 条专家轨迹、原专家文件、test_interval=782、test_episodes=10、
+  train_log_interval=16、save_interval=1563。
+  TensorBoard 横轴还包括判别器采样；interval=157 时完整运行通常为 1396000，
+  其中 396000 是额外的判别器 rollout，不是 SAC replay 采集步。
+
+  每组均包含原始配置作为对照，seed=0、1、2。
+  各组独立从 hype.sh 开始，不自动继承其他网格选出的参数，不使用旧的 30 万步筛选。
+  所有程序从头训练；默认不会启动旧的“30 万步两轮筛选 -> 自动选中一个候选”流程。
+
+目录及搜索范围
+  halfcheetah_critic_search.sh：12 组
+    actor/critic 优化器一起选择 OAdam 或 Adam（温度优化器保持 Adam）；
+    target_update_tau = 0.02 / 0.005；三个种子。
+    学习率保持 7.3e-4。包含旧筛选的前三个候选和 Adam + tau=0.02 对照。
+
+  halfcheetah_mixing_search.sh：12 组
+    原始比例 [[0.2,0.1,200000],[0.1,0.01,1000000]]；
+    固定 0.05；固定 0.1；原始衰减但末端改成 0.05；三个种子。
+    schedule 的端点仍按 SAC 梯度更新次数计算，与 hype.sh 相同。
+
+  halfcheetah_actor_search.sh：18 组
+    actor_lr = 7.3e-4 / 3e-4 / 1e-4；
+    target_update_tau = 0.02 / 0.005；三个种子。
+    critic_lr、temp_lr 均保持 7.3e-4，不跟随 actor_lr 改变。
+
+  halfcheetah_temperature_search.sh：9 组
+    temp_lr = 7.3e-4 / 3e-4 / 1e-4；三个种子。
+    actor_lr、critic_lr 和目标熵保持原值。
+
+  halfcheetah_discriminator_search.sh：18 组
+    discriminator_train_steps = 1 / 2；
+    gradient_penalty_coef = 10 / 30 / 100；三个种子。
+    判别器间隔仍为 157，其他判别器设置沿用 hype.sh。
+
+  halfcheetah_confirm_search.sh：3 组，单独运行
+    默认是原始配置三个种子；可在命令末尾明确给出想复核的候选参数。
+    不读取旧运行目录，也不会静默继承其他设置。
+
+运行（在项目根目录）
+  默认两张卡、最多 8 个并行任务，每卡 4 个：
+    --workers 8 --gpus 0,0,0,0,1,1,1,1
+
+  依次运行前五个独立网格，共 69 个完整训练任务：
+    bash search/HyPESAC/halfcheetah_param_search.sh
+
+  建议先执行一个方向，例如专家混合比例：
+    bash search/HyPESAC/halfcheetah_mixing_search.sh
+  单独复核原来的较好候选：
+    bash search/HyPESAC/halfcheetah_critic_search.sh
+
+  兼容总入口的单阶段调用（--stage 放在最前）：
+    bash search/HyPESAC/halfcheetah_param_search.sh --stage actor
+  支持阶段：all / critic / mixing / actor / temperature / discriminator / confirm。
+  默认 all，按 critic -> mixing -> actor -> temperature -> discriminator 执行。
+  同时只启动一个网格，因此总并行上限为 8；请勿手动同时运行多个脚本，以免叠加负载。
+  最后不足 8 个任务时按剩余数量运行；confirm 只有 3 个任务。
+
+  预览：
+    bash search/HyPESAC/halfcheetah_mixing_search.sh --dry-run
+  减少组合数量：
+    bash search/HyPESAC/halfcheetah_actor_search.sh --limit 8
+  手动复核候选（仅示例，尚未验证更优）：
+    bash search/HyPESAC/halfcheetah_confirm_search.sh algorithm.rl.actor_lr=3e-4 algorithm.rl.target_update_tau=0.005
+
+  --workers、--gpus、--limit、--start、--shuffle、--seed、--log-dir、
+  --timeout-hours 和 Hydra 的 key=value 参数由公共 parallel_search.py 处理。
+  --seed 是网格顺序的随机种子，训练种子在 JSON 中为 0/1/2。
+  覆盖 seed=... 或其他正在搜索的参数会让组合重合，不建议这样使用。
+  --log-dir 只用于单网格，请给新目录，避免覆盖已有同名组合。
+  all 模式不支持 --log-dir，共用一个输出目录会使不同网格混在一起。
+  WORKERS / GPUS / TIMEOUT_HOURS 也可调整启动器，默认 8 / 0,0,0,0,1,1,1,1 / 48。
+  脚本自动激活 rlzero。除搜参参数、独立日志目录和 GPU 分配外，其余沿用 hype.sh。
+  用户手动追加 total_epoch 等覆盖后，则不再满足与 hype.sh 完全相同的默认训练设置。
+
+结果
+  outputs/HyPESAC-HalfCheetah-<方向>-search/<时间>/<参数组合>/
+  每组包含 stdout.log、.hydra/config.yaml、TensorBoard 和原来的模型文件；
+  search_exit.json 记录启动器返回码。0 表示程序正常退出，不表示算法收敛。
+  两次相同网格不要在同一秒启动，避免公共启动器生成相同时间目录。
+
+  汇总（先激活 rlzero）：
+    python search/HyPESAC/halfcheetah_search_tools.py summarize <搜参输出目录>
+
+  生成 summary.csv，检查三个种子的末三次评估均值、末次回报、Q loss、Q 值和温度。
+  不应凭最高瞬时回报或单个种子的最高排名选参数。
+  要与该网格中的原始配置按相同 seed 做对照；候选没有稳定改善则保留原始配置。
+  大而有限的 Q 值不会被自动判为失败，仍需看其曲线。
+  沿用 train_log_interval=16，最终 SAC 步数可能没有被记录；汇总仅在
+  search_exit.json 返回码为 0 且步数缺口小于一个日志周期时认定完整预算已完成。
+  保留原日志频率也意味着不会记录每一次判别器更新。
+
+专家抽样口径
+  每个种子、同一数据文件仍由现有 ExpertDataset 随机选 5 条轨迹。
+  这些网格的参数不改变抽样前的随机调用；相同 seed 可在各网格间进行配对比较。
+  seed 不同仍可能选择不同专家，因此多种子变化包含训练随机性和专家子集变化。
+  本次未加入独立专家种子，也未替换数据文件，以保持与 hype.sh 相同的训练过程。
+
+旧文件
+  原来的六个文件保存在 archive/20261002_before_baseline_search/，供参考。
+  archive 中的 SH/JSON 是历史快照，不建议直接执行（旧脚本依赖当时目录结构）。
+  halfcheetah_stability_search.json 已移入归档，不再属于当前搜索入口。
+  本次未提交或推送 Git，也未启动正式训练。

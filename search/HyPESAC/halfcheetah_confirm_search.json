@@ -1,0 +1,14 @@
+{
+  "run_script": "search/HyPESAC/run_hype_search.py",
+  "sweep_name": "HyPESAC-HalfCheetah-confirm-search",
+  "fixed_overrides": [
+    "env.name=HalfCheetah-v5"
+  ],
+  "search_space": {
+    "seed": [
+      0,
+      1,
+      2
+    ]
+  }
+}

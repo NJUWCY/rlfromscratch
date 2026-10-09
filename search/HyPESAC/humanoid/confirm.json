@@ -1,0 +1,14 @@
+{
+  "run_script": "search/HyPESAC/run_hype_search.py",
+  "sweep_name": "HyPESAC-Humanoid-confirm",
+  "requires_source": true,
+  "fixed_overrides": [
+    "env.name=Humanoid-v5"
+  ],
+  "search_space": {
+    "seed": [
+      3,
+      4
+    ]
+  }
+}

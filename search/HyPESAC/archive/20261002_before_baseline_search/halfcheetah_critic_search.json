@@ -1,0 +1,69 @@
+{
+  "run_script": "run_hype.py",
+  "sweep_name": "HyPESAC-HalfCheetah-critic-search",
+  "fixed_overrides": [
+    "algorithm=hypesac",
+    "env=mujoco",
+    "env.name=HalfCheetah-v5",
+    "env.num_training_envs=1",
+    "env.num_testing_envs=1",
+    "env.obs_norm=false",
+    "env.absorbing=false",
+    "seed=0",
+    "gamma=0.98",
+    "total_epoch=4688",
+    "interact_per_epoch=64",
+    "update_step_per_epoch=64",
+    "update_discriminator_step_per_epoch=1",
+    "discriminator_train_interval=157",
+    "start_train_step=1000",
+    "env.max_episode_length=1000",
+    "train_action_deterministic=false",
+    "test_interval=156",
+    "test_episodes=10",
+    "train_log_interval=1",
+    "save_interval=781",
+    "algorithm.policy_lr_decay=true",
+    "algorithm.rl.buffer_size=1000000",
+    "algorithm.rl.batch_size=256",
+    "algorithm.rl.actor_optimizer=${algorithm.rl.critic_optimizer}",
+    "algorithm.rl.actor_lr=${algorithm.rl.critic_lr}",
+    "algorithm.rl.temp_lr=${algorithm.rl.critic_lr}",
+    "algorithm.rl.temp_optimizer=Adam",
+    "algorithm.rl.learn_temp=true",
+    "algorithm.rl.update_log_temp=true",
+    "algorithm.rl.init_temp=1.0",
+    "algorithm.rl.target_entropy=-1.0",
+    "algorithm.rl.initialize=true",
+    "algorithm.rl.hidden_sizes=[256,256]",
+    "algorithm.discriminator.disc_lr=8e-4",
+    "algorithm.discriminator.discriminator_optimizer=OAdam",
+    "algorithm.discriminator.discriminator_train_steps=1",
+    "algorithm.discriminator.discriminator_batch_size=4096",
+    "algorithm.discriminator.rollout_episodes=4",
+    "algorithm.discriminator.gradient_penalty_coef=10.0",
+    "algorithm.discriminator.target_gradient_norm=0.4",
+    "algorithm.sampling_schedule=[[0.2,0.1,200000],[0.1,0.01,1000000]]",
+    "expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/sac_HalfCheetah-v5_newest_100eps_min_reward_0.hdf5",
+    "expert_dataset.trajectory_num=5",
+    "expert_dataset.subsample_frequency=1",
+    "use_wandb=false",
+    "use_swanlab=false",
+    "use_tensorboard=true"
+  ],
+  "search_space": {
+    "algorithm.rl.critic_optimizer": [
+      "OAdam",
+      "Adam"
+    ],
+    "algorithm.rl.critic_lr": [
+      0.00073,
+      0.0003,
+      0.0001
+    ],
+    "algorithm.rl.target_update_tau": [
+      0.02,
+      0.005
+    ]
+  }
+}

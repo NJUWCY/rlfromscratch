@@ -1,0 +1,23 @@
+{
+  "run_script": "search/HyPESAC/run_hype_search.py",
+  "sweep_name": "HyPESAC-HalfCheetah-actor-search",
+  "fixed_overrides": [
+    "env.name=HalfCheetah-v5"
+  ],
+  "search_space": {
+    "algorithm.rl.actor_lr": [
+      0.00073,
+      0.0003,
+      0.0001
+    ],
+    "algorithm.rl.target_update_tau": [
+      0.02,
+      0.005
+    ],
+    "seed": [
+      0,
+      1,
+      2
+    ]
+  }
+}

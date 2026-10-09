@@ -1,0 +1,35 @@
+{
+  "run_script": "search/HyPESAC/run_hype_search.py",
+  "sweep_name": "HyPESAC-Humanoid-round1-mixing-optimizer",
+  "requires_source": false,
+  "fixed_overrides": [
+    "env.name=Humanoid-v5",
+    "algorithm.reset_policy_timesteps=false",
+    "algorithm.policy_lr_decay=true",
+    "algorithm.rl.common_net=false",
+    "algorithm.rl.initialize=true",
+    "algorithm.rl.critic_loss_coef=1.0",
+    "algorithm.discriminator.discriminator_initialization=orthogonal_relu",
+    "algorithm.discriminator.discriminator_output_gain=1.0",
+    "algorithm.rl.target_entropy=-1.916290731874155",
+    "algorithm.rl.target_update_tau=0.02",
+    "algorithm.rl.actor_optimizer=${algorithm.rl.critic_optimizer}"
+  ],
+  "search_space": {
+    "algorithm.sampling_schedule": [
+      "[[0.2,0.1,200000],[0.1,0.01,1000000]]",
+      "[[0.025,0.025,1000000]]",
+      "[[0.05,0.05,1000000]]",
+      "[[0.1,0.1,1000000]]"
+    ],
+    "algorithm.rl.critic_optimizer": [
+      "OAdam",
+      "Adam"
+    ],
+    "seed": [
+      0,
+      1,
+      2
+    ]
+  }
+}

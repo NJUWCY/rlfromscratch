@@ -130,7 +130,9 @@ class MLPNetwork(nn.Module):
             layers.append(activation())
             last_dim = hidden_size
         
-        layers.append(_maybe_spectral_norm(layer_init(nn.Linear(last_dim, output_dim),initialize=initialize, std=last_std), spectral_norm))
+        # output_dim=0 exposes the hidden features, e.g. a shared actor trunk.
+        if output_dim > 0:
+            layers.append(_maybe_spectral_norm(layer_init(nn.Linear(last_dim, output_dim),initialize=initialize, std=last_std), spectral_norm))
         self.net = nn.Sequential(*layers)
     
     def forward(self, x):
@@ -330,14 +332,28 @@ class TanhGaussianActor(Actor):
                  activation=torch.nn.Tanh, 
                  initialize=False,
                  initial_log_sigma:float=0.0,
-                 last_std:float=0.01):
+                 last_std:float=0.01,
+                 common_net:bool=False):
         super(TanhGaussianActor, self).__init__(observation_space, action_space)
 
-        self.mu = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize, last_std)
+        self.common_net = bool(common_net)
+        if self.common_net:
+            # Share every hidden layer; keep separate linear mean/std heads.
+            self.trunk = net_architecture(observation_space.shape[0], 0,
+                                          hidden_sizes, activation, initialize)
+            feature_dim = hidden_sizes[-1] if hidden_sizes else observation_space.shape[0]
+            self.mu = layer_init(nn.Linear(feature_dim, action_space.shape[0]),
+                                 std=last_std, initialize=initialize)
+        else:
+            self.mu = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize, last_std)
         # you can use network to compute the log_sigma according to the state
         self.state_dependent_std = state_dependent_std
         if state_dependent_std:
-            self.log_sigma = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize,last_std)
+            if self.common_net:
+                self.log_sigma = layer_init(nn.Linear(feature_dim, action_space.shape[0]),
+                                            std=last_std, initialize=initialize)
+            else:
+                self.log_sigma = net_architecture(observation_space.shape[0], action_space.shape[0], hidden_sizes,activation,initialize,last_std)
         else:
             self.log_sigma = nn.Parameter(
                 torch.full(
@@ -353,6 +369,9 @@ class TanhGaussianActor(Actor):
 
 
     def forward(self,x:torch.Tensor):
+        # Older pickled actors have no common_net attribute.
+        if getattr(self, "common_net", False):
+            x = self.trunk(x)
         mu = self.mu(x)
         if self.state_dependent_std:
             log_sigma = self.log_sigma(x)

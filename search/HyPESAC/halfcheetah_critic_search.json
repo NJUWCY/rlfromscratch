@@ -1,0 +1,25 @@
+{
+  "run_script": "search/HyPESAC/run_hype_search.py",
+  "sweep_name": "HyPESAC-HalfCheetah-critic-search",
+  "fixed_overrides": [
+    "env.name=HalfCheetah-v5"
+  ],
+  "search_space": {
+    "algorithm.rl.critic_optimizer": [
+      "OAdam",
+      "Adam"
+    ],
+    "algorithm.rl.actor_optimizer": [
+      "${algorithm.rl.critic_optimizer}"
+    ],
+    "algorithm.rl.target_update_tau": [
+      0.02,
+      0.005
+    ],
+    "seed": [
+      0,
+      1,
+      2
+    ]
+  }
+}

@@ -16,6 +16,8 @@ target_update_method: soft
 target_update_interval: 1
 target_update_tau: 0.005
 batch_size: 256
+# Scale the sum of the two critic MSEs; SB3 uses 0.5.
+critic_loss_coef: 1.0
 
 
 learn_temp: false

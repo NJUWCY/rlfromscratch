@@ -1,4 +1,5 @@
 import torch
+from .optimizers import OAdam
 ACTIVATION_DICT = {
     "relu": torch.nn.ReLU,
     "tanh": torch.nn.Tanh,
@@ -14,5 +15,5 @@ OPTIMIZER_DICT = {
     "SGD": torch.optim.SGD,
     "RMSprop": torch.optim.RMSprop,
     "AdamW": torch.optim.AdamW,
+    "OAdam": OAdam,
 }
-

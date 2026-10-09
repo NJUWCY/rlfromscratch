@@ -1,0 +1,35 @@
+name: HyPESAC
+defaults:
+  - /algorithm/sac@rl
+  - /algorithm/hype@discriminator
+  - _self_
+
+# Each endpoint is a number of mixed SAC minibatches, not environment steps.
+sampling_schedule: [[0.2, 0.1, 200000], [0.1, 0.01, 1000000]]
+policy_lr_decay: true
+# Repeat random-action warmup and (when enabled) LR decay after each D round.
+# The phase budget is discriminator_train_interval * interact_per_epoch * n_envs.
+# Global counters, expert sampling progress, replay, optimizers and env persist.
+# This clock-only switch does not reproduce SB3's environment resets; the phase
+# budget uses whole epochs (e.g. 10048 steps), not garage's nominal 10000 steps.
+reset_policy_timesteps: false
+
+rl:
+  buffer_name: AbsorbingReplayBuffer
+  buffer_size: 1000000
+  batch_size: 256
+  nstep: 1
+  actor_optimizer: OAdam
+  critic_optimizer: OAdam
+  temp_optimizer: Adam
+  actor_lr: 7.3e-4
+  critic_lr: 7.3e-4
+  temp_lr: 7.3e-4
+  learn_temp: true
+  update_log_temp: true
+  init_temp: 1.0
+  target_entropy: -1.0
+  target_update_tau: 0.02
+  initialize: true
+  # Share actor hidden layers between the mean and log-std heads when enabled.
+  common_net: false
