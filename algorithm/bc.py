@@ -1,101 +1,61 @@
-import gymnasium as gym
-import torch
+"""Behavior cloning by maximum likelihood of expert actions."""
 
-from agent.agent import PolicyAgent
-from logger.logger import Logger
-from utils import OPTIMIZER_DICT
+import numpy as np
+import torch
+from gymnasium.spaces import Box, Discrete
+
 from .offline import OfflineAlgorithm
+from utils import OPTIMIZER_DICT
+from utils.networks import DiagGaussianActor, TanhGaussianActor, DiscreteProbabilityActor
+from utils.result import Result
 
 
 class BehaviorCloning(OfflineAlgorithm):
-    def __init__(
-        self,
-        training_envs,
-        dataset,
-        agent: PolicyAgent,
-        logger: Logger,
-        device,
-        save_pth: str,
-        best_pth: str,
-        args,
-    ):
-        if not isinstance(training_envs.action_space, gym.spaces.Box):
-            raise NotImplementedError("BehaviorCloning currently implements only continuous Box action spaces.")
+    """Minimize -E_dataset[log pi_actor(a | s)]; no critic or entropy objective."""
 
-        super(BehaviorCloning, self).__init__(
-            training_envs=training_envs,
-            dataset=dataset,
-            agent=agent,
-            logger=logger,
-            device=device,
-            save_pth=save_pth,
-            best_pth=best_pth,
-            args=args,
-        )
+    def __init__(self, training_envs, testing_envs, buffer, agent, logger,
+                 device, args, bc_args):
+        actor = agent.actor
+        if not isinstance(actor, (DiagGaussianActor, TanhGaussianActor,
+                                  DiscreteProbabilityActor)):
+            raise TypeError("BC requires a probabilistic actor: DiagGaussianActor, "
+                            "TanhGaussianActor or DiscreteProbabilityActor")
+        if isinstance(actor, DiscreteProbabilityActor):
+            if not isinstance(agent.action_space, Discrete) or agent.action_space.start != 0:
+                raise ValueError("DiscreteProbabilityActor requires zero-based Discrete actions")
+        elif not isinstance(agent.action_space, Box):
+            raise ValueError("Gaussian actors require a Box action space")
+        if args.env.absorbing or getattr(buffer, "absorbing", False):
+            raise ValueError("BC requires env.absorbing=false")
+        super().__init__(training_envs, testing_envs, buffer, agent, logger,
+                         device, args, bc_args)
+        actions = buffer.buffer["actions"][:, :self.dataset_steps]
+        if not np.isfinite(actions).all():
+            raise ValueError("Expert actions must be finite")
+        if isinstance(actor, DiscreteProbabilityActor):
+            if np.any(actions != np.floor(actions)) or np.any(actions < 0) or np.any(actions >= self.action_space.n):
+                raise ValueError("Expert actions must be valid integer action indices")
+        elif isinstance(actor, TanhGaussianActor):
+            if (np.any(actions < self.action_space.low - 1e-5)
+                    or np.any(actions > self.action_space.high + 1e-5)):
+                raise ValueError("TanhGaussianActor requires expert actions within environment bounds")
+        # Gaussian std parameters and a discrete policy's encoder belong to actor.
+        self.actor_optimizer = OPTIMIZER_DICT[bc_args.actor_optimizer](
+            self.agent.actor.parameters(), lr=bc_args.actor_lr)
 
-        algo_args = args.algorithm
-        self.actor_lr = algo_args.actor_lr
-        self.entropy_coef = getattr(algo_args, "entropy_coef", 0.0)
-        self.use_grad_clip = getattr(algo_args, "use_grad_clip", False)
-        self.max_grad_norm = getattr(algo_args, "max_grad_norm", 0.5)
-        self.action_eps = getattr(algo_args, "action_eps", 1e-6)
-
-        self.optimizer = OPTIMIZER_DICT[algo_args.optimizer](self.agent.actor.parameters(), lr=self.actor_lr)
-        self.action_low = torch.as_tensor(training_envs.action_space.low, device=device, dtype=torch.float32)
-        self.action_high = torch.as_tensor(training_envs.action_space.high, device=device, dtype=torch.float32)
-
-    def _prepare_actions(self, actions: torch.Tensor) -> torch.Tensor:
-        actions = actions.to(self.device, dtype=torch.float32)
-        if actions.ndim == 1 and self.action_dim == 1:
-            actions = actions.unsqueeze(1)
-        if actions.shape[-1] != self.action_dim:
-            raise ValueError(f"Expected action dim {self.action_dim}, got action shape {tuple(actions.shape)}.")
-        return torch.clamp(actions, min=self.action_low + self.action_eps, max=self.action_high - self.action_eps)
-
-    def _dist_entropy(self, dist) -> torch.Tensor:
-        if hasattr(dist, "base_dist"):
-            return dist.base_dist.entropy().mean()
-        return dist.entropy().mean()
-
-    def _deterministic_action(self, dist) -> torch.Tensor:
-        actor = self.agent.actor
-        if actor.rescale:
-            if actor.action_bound_method == "tanh":
-                pred_actions = actor.scale * torch.tanh(dist.base_dist.mean) + actor.loc
-            else:
-                raise NotImplementedError
-        else:
-            pred_actions = dist.base_dist.mean
-        return actor._action_clamp(pred_actions)
-
-    def update_batch(self, batch: dict[str, torch.Tensor]) -> dict[str, float]:
-        states = batch["states"].to(self.device, dtype=torch.float32)
-        actions = self._prepare_actions(batch["actions"])
-
-        dist = self.agent.dist(states)
-        log_probs = dist.log_prob(actions)
-        nll_loss = -log_probs.mean()
-        entropy = self._dist_entropy(dist)
-        loss = nll_loss - self.entropy_coef * entropy
-
-        self.optimizer.zero_grad()
-        loss.backward()
-        grad_norm = None
-        if self.use_grad_clip:
-            grad_norm = torch.nn.utils.clip_grad_norm_(self.agent.actor.parameters(), self.max_grad_norm)
-        self.optimizer.step()
-
-        with torch.no_grad():
-            pred_actions = self._deterministic_action(dist)
-            action_mse = torch.mean((pred_actions - actions) ** 2)
-
-        metrics = {
-            "actor/loss": loss.item(),
-            "actor/nll_loss": nll_loss.item(),
-            "actor/entropy": entropy.item(),
-            "actor/action_mse": action_mse.item(),
-            "actor/log_prob_mean": log_probs.mean().item(),
-        }
-        if grad_norm is not None:
-            metrics["actor/grad_norm"] = float(grad_norm)
-        return metrics
+    def _update_policy(self, batch):
+        self.agent.actor.train()
+        with Result("train") as result:
+            log_probs = self.agent.log_prob(batch["states"], batch["actions"])
+            if log_probs.ndim != 1 or len(log_probs) != len(batch["states"]):
+                raise ValueError("The policy must return one joint log-probability per action")
+            loss = -log_probs.mean()
+            if not torch.isfinite(loss):
+                raise FloatingPointError("BC negative log-likelihood is not finite")
+            self.actor_optimizer.zero_grad()
+            loss.backward()
+            self.actor_optimizer.step()
+        result.add_metric("actor/loss", loss.item())
+        result.add_metric("actor/log_prob", log_probs.detach().mean().item())
+        result.add_metric("actor/lr", self.actor_optimizer.param_groups[0]["lr"])
+        return result

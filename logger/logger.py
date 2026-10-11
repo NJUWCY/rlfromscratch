@@ -40,11 +40,14 @@ def _print(training: bool, epoch: int, interaction_step: int, gradient_step: int
 
 
 class Logger:
-    def __init__(self, project_name:str, run_name:str, config:dict, log_dir="logs", use_wandb=True, use_tensorboard=True, use_swanlab=True):
+    def __init__(self, project_name:str, run_name:str, config:dict, log_dir="logs", use_wandb=True, use_tensorboard=True, use_swanlab=True, step_axis="interaction"):
         self.use_wandb = use_wandb
         self.use_tensorboard = use_tensorboard
         self.use_swanlab = use_swanlab
         self.log_dir = log_dir
+        if step_axis not in ("interaction", "gradient"):
+            raise ValueError("step_axis must be interaction or gradient")
+        self.step_axis = step_axis
         
 
         if isinstance(config, DictConfig):
@@ -73,15 +76,17 @@ class Logger:
             swanlab.log({key:value},step=step)
 
     def log_train(self, epoch, interaction_step, gradient_step, train_result: Result): 
+        step = gradient_step if self.step_axis == "gradient" else interaction_step
         for k,v in train_result.metrics.items():
-            self._log(f"train/{k}", v, interaction_step) # for non-loss metrics, we log them with interaction steps, for loss metrics, we log them with gradient steps
+            self._log(f"train/{k}", v, step)
 
             
         _print(training=True, epoch=epoch, interaction_step=interaction_step, gradient_step=gradient_step, metrics=train_result.metrics)
             
     def log_test(self, epoch, interaction_step, gradient_step, test_result: Result):
+        step = gradient_step if self.step_axis == "gradient" else interaction_step
         for k,v in test_result.metrics.items():
-            self._log(f"test/{k}", v, interaction_step)
+            self._log(f"test/{k}", v, step)
         _print(training=False, epoch=epoch, interaction_step=interaction_step, gradient_step=gradient_step, metrics=test_result.metrics)
 
     

@@ -28,7 +28,7 @@ basic_envs = sorted([
     env_id
     for env_id in gym.envs.registry.keys()
     if any(name in env_id for name in [
-        "Pendulum", "MountainCarContinuous"
+        "Pendulum", "MountainCarContinuous", "CartPole"
     ])
 ])
 

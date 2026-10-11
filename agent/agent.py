@@ -308,31 +308,47 @@ class DeterminiticA2CAgent(A2CAgent):
 
 
 class PolicyAgent(AgentBase):
+    """Actor-only agent with the same action interface as ProbabilityA2CAgent."""
+
     _config_attrs = AgentBase._config_attrs
 
-    def __init__(
-        self,
-        observation_space: Space,
-        action_space: Space,
-        device: torch.device,
-        actor: Actor,
-    ):
-        super(PolicyAgent, self).__init__(observation_space, action_space, device)
+    def __init__(self, observation_space: Space, action_space: Space,
+                 device: torch.device, actor: Actor):
+        super().__init__(observation_space, action_space, device)
+        if not isinstance(actor, (DiagGaussianActor, TanhGaussianActor,
+                                  DiscreteProbabilityActor)):
+            raise TypeError("PolicyAgent requires a probabilistic actor")
         self.actor = actor
 
+    def _states_tensor(self, states):
+        states = atari_state_preprocess_function(self.observation_space, states)
+        return to_correct_device_tensor(states, self.device).float()
+
     def dist(self, states):
-        states = to_correct_device_tensor(states, self.device)
-        return self.actor.get_dist(states)
+        return self.actor.get_dist(self._states_tensor(states))
 
-    def select_action(self, states: Union[np.ndarray, torch.Tensor], deterministic=False) -> Tuple[np.ndarray, Dict]:
-        states = to_correct_device_tensor(states, self.device)
-        return self.actor.get_action(states, deterministic)
+    def select_action(self, states, deterministic=False):
+        actions, log_probs, u = self.actor.get_action(
+            self._states_tensor(states), deterministic)
+        infos = {"log_probs": log_probs.detach().cpu().numpy()}
+        if u is not None:
+            infos["u"] = u.detach().cpu().numpy()
+        return actions.detach().cpu().numpy(), infos
 
-    def log_prob(self, states: Union[np.ndarray, torch.Tensor], actions: Union[np.ndarray, torch.Tensor]):
-        states = to_correct_device_tensor(states, self.device)
+    def log_prob(self, states, actions):
+        states = self._states_tensor(states)
         actions = to_correct_device_tensor(actions, self.device)
+        if isinstance(self.action_space, Discrete):
+            if actions.ndim == 1:
+                actions = actions.unsqueeze(-1)
+            if actions.ndim != 2 or actions.shape[1] != 1:
+                raise ValueError("Discrete actions must have shape (batch,) or (batch, 1)")
+            if torch.is_floating_point(actions) and not torch.equal(actions, actions.round()):
+                raise ValueError("Discrete actions must be integer indices")
+            actions = actions.long()
+        else:
+            actions = actions.float()
         return self.actor.get_log_prob(states, actions)
-
 
 
 class SACAgent(ProbabilityA2CAgent):

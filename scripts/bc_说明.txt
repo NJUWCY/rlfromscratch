@@ -1,0 +1,48 @@
+BC（行为克隆）
+============
+
+OfflineAlgorithm 继承 BaseAlgorithm，训练时不 reset/step 训练环境、
+不收集轨迹、不向 buffer 追加数据；每个 epoch 从固定数据集抽取
+update_step_per_epoch 个 minibatch。epoch 不表示完整遍历数据集一次。
+interaction_step 始终为 0，日志横轴为 gradient_step。
+
+BehaviorCloning 继承 OfflineAlgorithm，损失为：
+    loss = -mean(log pi_actor(expert_action | expert_state))
+只优化 actor（包括均值、标准差网络和离散策略编码器）；
+不创建或训练 critic，不使用奖励、Bellman 目标或额外熵正则。
+
+algorithm.actor_type 可选：
+- auto：Box 动作使用 TanhGaussianActor，Discrete 使用 DiscreteProbabilityActor。
+- TanhGaussianActor：tanh 后缩放到环境动作范围；专家动作必须使用环境坐标。
+  恰好位于边界的动作沿用现有 Actor 的内部数值近似计算 log_prob。
+- DiagGaussianActor：未缩放的高斯密度，允许拟合 PPO 保存的未裁剪原始动作。
+  环境评估时仍按项目现有逻辑裁剪执行动作。
+- DiscreteProbabilityActor：Categorical 概率策略；向量观测用 MLP，
+  channel-first 图像观测用 AtariCNNEncoder；动作要求零起始整数索引。
+确定性 actor 不受支持。
+
+沿用 ExpertDataset 的 HDF5/NPZ 数据格式和轨迹选择方式。
+虽然现有数据加载器读取完整 transition，BC 损失只使用 states/actions。
+env.obs_norm=true 时，从选中的离线数据拟合统计量，训练和评估期间冻结，
+保存时一并保存 _obs_rms.pth；不通过在线交互估计统计量。
+
+评估是可选的独立环境 rollout，不参与训练和数据集更新。
+test_interval=0 或 test_episodes=0 可以完全关闭环境 rollout。
+训练结束会保存 newest_model.pth；启用评估后按回报保存 best_model.pth。
+
+运行（默认依次训练 Ant-v5、HalfCheetah-v5、Hopper-v5、Walker2d-v5、Humanoid-v5）：
+每个环境使用对应的 SAC-Mujoco 专家数据和 5 条轨迹。
+传入 env.name=... 时只运行指定环境。
+cd /home/ubuntu/wangchenyang/rlzero/rlfromscratch
+bash scripts/bc.sh
+bash scripts/bc.sh algorithm.actor_type=DiagGaussianActor
+bash scripts/bc.sh env.name=HalfCheetah-v5
+bash scripts/bc.sh test_interval=0
+
+使用 PPO 或 Minari 数据时，追加 expert_dataset.data_path=实际文件路径。
+离散环境示例（替换数据路径）：
+bash scripts/bc.sh env=basic env.name=CartPole-v1 algorithm.actor_type=DiscreteProbabilityActor expert_dataset.data_path=/path/to/cartpole_expert.npz
+
+每个环境默认 10 万次 minibatch 更新，每 5000 epoch 评估。
+可以用 total_epoch、update_step_per_epoch、algorithm.batch_size、
+algorithm.actor_lr 和 algorithm.actor_optimizer 调整。

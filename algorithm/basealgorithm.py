@@ -28,8 +28,9 @@ class BaseAlgorithm(ABC):
         self.agent = agent.to(device)
         self.device = device
         self.logger = logger
-        self.observation_space = training_envs.observation_space
-        self.action_space = training_envs.action_space
+        spaces = training_envs if training_envs is not None else agent
+        self.observation_space = spaces.observation_space
+        self.action_space = spaces.action_space
         self.action_dim = get_action_dim(self.action_space)
         self.seed = args.seed 
 
