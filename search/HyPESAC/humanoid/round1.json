@@ -1,7 +1,6 @@
 {
   "run_script": "search/HyPESAC/run_hype_search.py",
   "sweep_name": "HyPESAC-Humanoid-round1-mixing-optimizer",
-  "requires_source": false,
   "fixed_overrides": [
     "env.name=Humanoid-v5",
     "algorithm.reset_policy_timesteps=false",

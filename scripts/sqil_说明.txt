@@ -1,0 +1,104 @@
+SQIL 实现说明
+
+论文：Reddy, Dragan, Levine，SQIL: Imitation Learning via Reinforcement
+Learning with Sparse Rewards，arXiv:1905.11108v3。
+对应位置：第 2 节 Algorithm 1，第 4.3 节连续控制 SAC 变体，附录 A.2/A.3。
+
+1. 算法流程
+   使用现有 ExpertDataset 选择并保留专家轨迹；在线数据写入独立的
+   ReplayBuffer，因此在线 buffer 覆盖旧样本时不会覆盖专家数据。
+   复用 ReplayBuffer.sample_mixed，通过 algorithm.sampling_schedule 指定
+   每个 minibatch 的专家比例。默认 [[0.5,0.5,1000000]]，保持 50% 专家、
+   50% 在线；默认 batch_size=256，即每类 128 个样本。
+   batch_size 必须为正整数；专家数=int(batch_size*expert_ratio)，其余为
+   在线样本。比例支持 [0,1]，实际比例可能因向下取整与设定值略有不同。
+
+   所有专家转移的学习奖励为 1，所有在线转移的学习奖励为 0。
+   标签按样本来源决定：在线动作即使与专家动作完全相同，奖励仍为 0。
+   专家 HDF5 和内存中的原始专家奖励不改动，采样后替换为 SQIL 标签；
+   在线转移存储前将奖励替换为 0，但不修改调用者的真实奖励数组。
+   无判别器、无 BC 预训练；采用 HyPE 的采样调度语义，不做分阶段重置。
+
+2. SAC 更新
+   对混合 batch 中的转移：
+     r_sqil = 1（专家）或 0（在线）
+     y = r_sqil + gamma * (1 - done) *
+         [min(Q_target_1(s', a'), Q_target_2(s', a')) - alpha * log pi(a'|s')]
+     a' ~ pi(.|s')
+     L_Q = critic_loss_coef * [mean((Q1-y)^2) + mean((Q2-y)^2)]
+     L_policy = mean(alpha * log pi(a|s) - min(Q1(s,a), Q2(s,a)))
+
+   mean 对整个混合 batch 求均值，不额外按来源重加权。默认 1:1 采样时，
+   对于每个 Q，专家与在线 TD loss 的权重相同，对应论文 MuJoCo 实验的
+   lambda_samp=1；与论文直接相加的两个均值相比，多一个整体 1/2 系数。
+   使用其他采样比例时，专家与在线样本的损失权重也随实际比例改变。
+   critic_loss_coef 默认沿用 SAC 的 1.0，可显式覆盖。
+   Q、actor、temperature、target critic 均直接复用 algorithm/sac.py。
+
+   真正终止的转移通过 done 屏蔽未来价值；时间截断保留 bootstrap。
+   不添加 DAC 的吸收态自循环（env.absorbing=false），避免给无限自循环
+   错误赋予专家奖励 1。本实现目前只支持 nstep=1。
+   obs_norm=true 时，沿用库中在线观测的采集时归一化约定；专家观测在
+   采样后用训练环境的当前统计量归一化，不改动专家数据或更新统计量。
+
+3. 当前库的环境和数据
+   scripts/sqil.sh 默认顺序运行：
+     Ant-v5、HalfCheetah-v5、Hopper-v5、Walker2d-v5、Humanoid-v5。
+   数据路径沿用 scripts/hype.sh：
+     outputs/collected/SAC-Mujoco/sac_<环境名>_newest_100eps_min_reward_0.hdf5
+   每个环境随机选择 5 条专家轨迹，seed=0，subsample_frequency=1，
+   当前数据每条为 1000 步，即每次运行使用 5000 个专家转移。
+   支持通过 expert_dataset.data_path、trajectory_num 等参数覆盖。
+
+   actor/replay/Q 均使用环境动作单位；Humanoid 范围为 [-0.4,0.4]。
+   Humanoid 每维目标熵为 -1+log(0.4)=-1.916290731874155；其余为 -1。
+   actor 的缩放和 log_prob Jacobian 直接使用现有 TanhGaussianActor。
+
+4. 默认训练设置
+   gamma=0.98，单训练环境，1,000,000 次环境交互；每轮收集 64 步并
+   更新 64 次，累计交互达到 1000 步后开始更新（以整轮边界为准）。
+   SAC 参数继承 config/algorithm/sac.yaml：两层 256 ReLU，Adam，
+   actor/critic/temperature 学习率 3e-4，target tau=0.005，alpha 初值 0.2。
+   SQIL 配置启用自动温度调节及 log_alpha loss；独立均值/标准差网络，
+   Linear 默认初始化。这些是本库的实现选择，不是论文全部超参数的复现。
+
+   评估沿用现有训练框架：每 782 轮评估 10 条确定性策略轨迹，记录真实
+   环境回报；TensorBoard 的 sqil/expert_ratio 是调度设定比例，
+   sqil/expert_fraction 是取整后的实际比例；sqil/reward_mean 是学习标签
+   均值，等于实际专家比例，不能当作任务回报。sqil/sample_step 记录更新
+   后的 SAC 累计更新次数。沿用框架按间隔保存 best/newest 模型；checkpoint
+   用于推理，不包含完整 replay/optimizer 状态，不保证精确续训。
+   默认日志位于 outputs/<环境名>-SQIL/<时间戳>/。
+
+5. 运行方式（服务器项目根目录）
+   cd /home/ubuntu/wangchenyang/rlzero/rlfromscratch
+   bash scripts/sqil.sh env.name=HalfCheetah-v5
+   bash scripts/sqil.sh env.name=Humanoid-v5 seed=1
+   bash scripts/sqil.sh
+
+   上面最后一条依次训练全部五个环境，不是并行训练。
+   可加 CUDA_VISIBLE_DEVICES=0 选择显卡，例如：
+   CUDA_VISIBLE_DEVICES=0 bash scripts/sqil.sh env.name=Humanoid-v5
+   其他 Hydra 参数可直接追加，例如 algorithm.rl.init_temp=0.1。
+
+6. 专家采样比例调度
+   参数格式与 HyPE 相同：每行 [起始比例, 结束比例, 累计结束更新次数]。
+   第一段从第 0 次 SAC 更新开始；后续段从上一段终点开始，逐段线性插值。
+   这里的 step 是已完成的 SAC 梯度更新次数，不是环境交互步数或 epoch；
+   每个 batch 采样前读取当前 gradient_step，预热收集不推进调度。
+   最后一段结束后维持其结束比例。各行终点必须为正且严格递增；
+   相邻段的结束/起始比例可不同，此时边界后会跳变，与 HyPE 一致。
+
+   固定 20% 专家：
+   bash scripts/sqil.sh env.name=Humanoid-v5 'algorithm.sampling_schedule=[[0.2,0.2,1000000]]'
+
+   前 20 万次更新从 50% 降到 20%，随后到第 100 万次降至 5%：
+   bash scripts/sqil.sh env.name=Humanoid-v5 'algorithm.sampling_schedule=[[0.5,0.2,200000],[0.2,0.05,1000000]]'
+
+   scripts/sqil.sh 已透传 Hydra 参数，不需要修改脚本。
+
+7. 检查方式
+   OMP_NUM_THREADS=1 python -m unittest discover -s tests -p test_sqil.py -v
+   测试覆盖奖励隔离、默认 1:1 采样、比例调度、专家保留、归一化、终止与截断的
+   Bellman 目标，以及实际 SAC 的 Q/actor/temperature/target 更新。
+   短运行检查只能确认训练链路，不代表已验证最终回报。

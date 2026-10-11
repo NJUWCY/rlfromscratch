@@ -1,9 +1,24 @@
 {
   "run_script": "search/HyPESAC/run_hype_search.py",
   "sweep_name": "HyPESAC-Humanoid-round3-temperature",
-  "requires_source": true,
   "fixed_overrides": [
-    "env.name=Humanoid-v5"
+    "env.name=Humanoid-v5",
+    "algorithm.reset_policy_timesteps=false",
+    "algorithm.policy_lr_decay=true",
+    "algorithm.rl.common_net=false",
+    "algorithm.rl.initialize=true",
+    "algorithm.rl.critic_loss_coef=1.0",
+    "algorithm.discriminator.discriminator_initialization=orthogonal_relu",
+    "algorithm.discriminator.discriminator_output_gain=1.0",
+    "algorithm.rl.target_entropy=-1.916290731874155",
+    "algorithm.rl.target_update_tau=0.02",
+    "algorithm.rl.actor_optimizer=${algorithm.rl.critic_optimizer}",
+    "algorithm.sampling_schedule=[[0.025,0.025,1000000]]",
+    "algorithm.rl.critic_optimizer=Adam",
+    "algorithm.rl.rescale=true",
+    "algorithm.rl.actor_lr=0.00073",
+    "algorithm.rl.critic_lr=0.00073",
+    "expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/sac_Humanoid-v5_newest_100eps_min_reward_0.hdf5"
   ],
   "search_space": {
     "algorithm.rl.init_temp": [

@@ -10,6 +10,7 @@ from .dqn import DQN
 from .trpo import TRPO 
 from .ppo import PPO
 from .sac import SAC
+from .sqil import SQIL
 from .bc import BehaviorCloning
 from .td3 import TD3
 from .gail import GAIL, GAILPPO, GAILTRPO
@@ -23,6 +24,7 @@ ALGORITHM_DICT = {
     "TRPO":TRPO,
     "PPO": PPO,
     "SAC": SAC,
+    "SQIL": SQIL,
     "BC": BehaviorCloning,
     "TD3": TD3,
     "GAIL": GAIL,

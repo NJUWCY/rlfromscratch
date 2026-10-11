@@ -18,7 +18,7 @@ from utils.utils import get_best_device, set_seed
 from logger.logger import Logger 
 from memory import AbsorbingReplayBuffer, ExpertDataset
 from agent import SACAgent
-from utils.networks import MLPNetwork, DoubleQFunction, QFunction, TanhGaussianActor
+from utils.networks import MLPNetwork, DoubleQFunction, QFunction, DiagGaussianActor, TanhGaussianActor
 from discriminator.discriminator import GAILDiscriminator
 from utils import ACTIVATION_DICT
 
@@ -28,6 +28,41 @@ def get_args(cfg: DictConfig):
     cfg.hydra_base_dir = os.getcwd()
     print("Parameters:", OmegaConf.to_yaml(cfg))
     return cfg
+
+
+def build_actor(observation_space, action_space, rl_args, device):
+    """Select the existing actor using the same rescale switch as SAC/PPO."""
+    actor_kwargs = dict(
+        device=device,
+        state_dependent_std=rl_args.state_dependent_std,
+        hidden_sizes=rl_args.hidden_sizes,
+        activation=ACTIVATION_DICT[rl_args.activation],
+        initialize=bool(getattr(rl_args, "initialize", False)),
+        initial_log_sigma=float(getattr(rl_args, "initial_log_sigma", 0.0)),
+    )
+    common_net = bool(getattr(rl_args, "common_net", False))
+    if not rl_args.rescale:
+        if common_net:
+            raise ValueError("DiagGaussianActor requires common_net=false")
+        # Raw Gaussian actions and densities, without tanh or an affine scale.
+        return DiagGaussianActor(observation_space, action_space, MLPNetwork, **actor_kwargs)
+    if rl_args.action_bound_method != "tanh":
+        raise ValueError(f"Action bound method {rl_args.action_bound_method} not supported")
+    return TanhGaussianActor(
+        observation_space, action_space, MLPNetwork,
+        common_net=common_net, **actor_kwargs,
+    )
+
+
+def validate_expert_actions(expert_actions, action_space, rescale):
+    """PPO can store raw Gaussian actions outside the environment's Box."""
+    if not np.isfinite(expert_actions).all():
+        raise ValueError("Expert actions must be finite")
+    if rescale and (np.any(expert_actions < action_space.low - 1e-5)
+                    or np.any(expert_actions > action_space.high + 1e-5)):
+        raise ValueError("Scaled-policy expert actions must be within the environment action bounds")
+    # In unscaled mode, retain raw expert actions to match policy replay, Q,
+    # discriminator inputs and the Gaussian log-probability coordinates.
 
 
 def build_discriminator_network(input_dim, discriminator_args):
@@ -98,19 +133,10 @@ def main(cfg: DictConfig):
     activation = ACTIVATION_DICT[rl_args.activation]
     # Keep the library actor/critic initialization, including output gain 0.01.
     orthogonal_init = bool(getattr(rl_args, "initialize", False))
-    if rl_args.action_bound_method != "tanh":
-        raise ValueError(f"HyPE requires a squashed Gaussian policy, got action_bound_method={rl_args.action_bound_method}")
-    actor = TanhGaussianActor(
-        training_envs.observation_space,
-        training_envs.action_space,
-        MLPNetwork,
-        device=device,
-        state_dependent_std=rl_args.state_dependent_std,
-        hidden_sizes=rl_args.hidden_sizes,
-        activation=activation,
-        initialize=orthogonal_init,
-        common_net=bool(getattr(rl_args, "common_net", False))
+    actor = build_actor(
+        training_envs.observation_space, training_envs.action_space, rl_args, device,
     )
+    logging.info("Actor: %s (rescale=%s)", type(actor).__name__, rl_args.rescale)
 
     critic_class = DoubleQFunction if rl_args.double_critic else QFunction
     critic_kwargs = dict(hidden_sizes=rl_args.hidden_sizes, activation=activation, initialize=orthogonal_init)
@@ -151,12 +177,9 @@ def main(cfg: DictConfig):
                                   1,
                                   absorbing=args.env.absorbing)
 
-    # Both datasets and the actor must use actual environment action units.
-    expert_actions = expert_buffer.buffer["actions"]
-    if (not np.isfinite(expert_actions).all()
-            or np.any(expert_actions < training_envs.action_space.low - 1e-5)
-            or np.any(expert_actions > training_envs.action_space.high + 1e-5)):
-        raise ValueError("Expert actions must be in environment coordinates and within its action bounds")
+    validate_expert_actions(
+        expert_buffer.buffer["actions"], training_envs.action_space, rl_args.rescale,
+    )
 
     algorithm: HyPE | HyPESAC
 

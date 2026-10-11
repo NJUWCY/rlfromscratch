@@ -1,90 +1,143 @@
-Humanoid-v5 HyPESAC 参数搜索
+round2 结果后的新增搜索
+======================
 
-入口目录：
+建议先运行 round3_actor.sh。以下三个脚本均使用静态 JSON，
+通过现有 common.sh 调用 scripts/hype.sh，无 --from-run / prepare_spec。
+默认两卡八进程：--workers 8 --gpus 0,0,0,0,1,1,1,1。
+
+共同基线
+- Humanoid-v5，TanhGaussianActor，rescale=true，Actor/Critic 为 Adam。
+- SAC-Mujoco 专家数据，5 条完整轨迹，subsample_frequency=1。
+- 专家采样比例 0.025，tau=0.005，沿用 round2 的初始化和目标熵。
+- 默认 100 万策略交互步，64 步交互 / 64 次更新。
+- 除明确搜索和固定覆盖的参数，其余由 scripts/hype.sh 与配置提供。
+
+1. round3_actor.sh / round3_actor.json：12 个新增实验
+   critic_lr: 1e-4、3e-4
+   actor_lr: 3e-4、1e-4
+   seed: 0、1、2
+   固定 temp_lr=7.3e-4、init_temp=1。
+   actor_lr=7.3e-4 的六个对照已在 round2 完成，无需重复：
+   outputs/HyPESAC-Humanoid-round2-critic/2026-10-10_14-10-34
+   只比较其中 tau=0.005、critic_lr=1e-4 或 3e-4 的运行。
+   新旧实现或公共参数若变化，需要重跑对照。
+
+2. round4_temperature.sh / round4_temperature.json：18 个实验
+   init_temp: 1、0.1
+   temp_lr: 7.3e-4、3e-4、1e-4
+   seed: 0、1、2
+   当前静态默认基线为 round2 的 critic_lr=1e-4、actor_lr=7.3e-4。
+   应在 round3_actor 结束后，将选中的 Actor/Critic 学习率写入
+   fixed_overrides，或在命令末尾追加对应 Hydra 参数。
+   不会自动挑选 round3_actor 的结果。
+
+3. round5_discriminator.sh / round5_discriminator.json：12 个实验
+   disc_lr: 8e-4、1.6e-3
+   discriminator_train_steps: 1、4
+   seed: 0、1、2
+   更新间隔仍为 157 epochs，每次更新使用同一批当前策略轨迹，
+   discriminator_train_steps 控制该次更新内重新采样 minibatch 的次数。
+   当前默认 Actor/Critic/温度仍为 round2 最佳基线：
+   actor_lr=7.3e-4、critic_lr=1e-4、temp_lr=7.3e-4、init_temp=1。
+   运行前按前两阶段结果覆盖这四个参数。
+   此搜索保留现有判别器学习率按轮次衰减的机制。
+
+运行
+cd /home/ubuntu/wangchenyang/rlzero/rlfromscratch
+bash search/HyPESAC/humanoid/round3_actor.sh
+
+之后分别运行（先填写选出的固定参数）：
+bash search/HyPESAC/humanoid/round4_temperature.sh
+bash search/HyPESAC/humanoid/round5_discriminator.sh
+
+命令行覆盖示例，仅说明语法，不代表已选出的最优配置：
+bash search/HyPESAC/humanoid/round4_temperature.sh algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001
+
+每条命令末尾加 --dry-run 可预览，不启动训练。
+只覆盖该阶段固定参数；覆盖 search_space 中的参数会使候选重复。
+结果仍按每个 seed 最后三次评估均值，再汇总跨 seed 均值与标准差。
+新增日志分别位于 outputs/HyPESAC-Humanoid-round3-actor、
+outputs/HyPESAC-Humanoid-round4-temperature 和
+outputs/HyPESAC-Humanoid-round5-discriminator。
+
+旧 round3.sh / round3.json 保留历史温度搜索基线，
+后续使用新增的 round4_temperature.sh。
+以下为原有说明。
+------------------------------------------------------------
+
+Humanoid-v5 HyPESAC 参数搜索（静态 JSON 配置）
+
+目录：
 /home/ubuntu/wangchenyang/rlzero/rlfromscratch/search/HyPESAC/humanoid
 
-设计依据
-当前旧版 hype.sh 和 garage 参数运行（各 seed 0）的后期平均回报均约 60，
-同时出现 Q 值、Q loss 和温度显著增大。优先检查混合采样和 SAC 优化稳定性。
-HalfCheetah 上较低专家比例与 Adam 有收益，但不能直接认定对 Humanoid 同样最优，
-所以第一轮保留 Humanoid 原始采样计划和 OAdam 作为对照。
+现在每个阶段直接读取自己的 JSON，不再使用 --from-run 或 prepare_spec.py。
+fixed_overrides 写固定参数，search_space 写搜索范围。
+训练入口仍为 search/HyPESAC/run_hype_search.py，复用 scripts/hype.sh 的公共设置。
+命令行追加的 Hydra 参数优先级最高。每个 trial 都从头训练。
 
-公共设置
-- 训练入口复用 scripts/hype.sh，仅运行 Humanoid-v5，不调用 hype_garage.sh。
-- 5 条完整专家轨迹，subsample_frequency=1，1 个训练环境，gamma=0.98。
-- 每次 100 万策略采样步（15625 epochs，每 epoch 64 步），每 epoch 64 次 SAC 更新。
-  判别器额外交互计入日志的总环境步数；不同配置的总环境交互量可能不同。
-- 第一轮固定原来的网络、初始化、critic loss 系数和全局计数方式。
-- 动作保持环境坐标 [-0.4,0.4]；目标熵每维 -1.916290731874155，
-  即 -1 + log(0.4)。17 维总目标熵约 -32.57694。第三轮仅搜索初始温度和
-  温度学习率，不去掉动作尺度修正，也不修改目标熵。
-- 默认最多 8 个进程，GPU 0、1 各 4 个；每个 trial 超时 48 小时。
-- 后续阶段继承 --from-run 的超参数，重新初始化模型；不是继续训练 checkpoint。
-- 显式传入的命令行 Hydra overrides 优先级最高。
+当前第二轮基线
+- 依据第一轮三个 seed 的末期回报，固定 Actor/Critic 为 Adam。
+- 固定专家采样比例 0.025，batch_size=256 时实际每批取 6 个专家样本。
+- 使用第一轮的 TanhGaussianActor、rescale=true 和 SAC-Mujoco 专家数据。
+- 5 条完整专家轨迹，subsample_frequency=1，obs_norm=false，absorbing=false。
+- Humanoid 每维目标熵 -1.916290731874155，网络和判别器初始化与第一轮相同。
+- actor_lr=temp_lr=7.3e-4，init_temp=1，保持原有全局线性学习率衰减。
+- 其余训练预算、更新频率、判别器参数仍由 scripts/hype.sh 和 HyPE 配置提供。
+- scripts/hype_humanoid.sh 是独立的 DiagGaussianActor + PPO 数据实验入口，
+  当前这些搜索脚本并不调用它。
 
-round1.sh：混合采样与优化器，24 次
-- sampling_schedule：原始 [[0.2,0.1,200000],[0.1,0.01,1000000]]，
-  或从训练开始固定为 0.025 / 0.05 / 0.1。
-- Actor 和 Critic 同用 OAdam / Adam，target_update_tau=0.02。
-- seed=0,1,2；4 x 2 x 3 = 24。
-- 比例是 SAC minibatch 的专家样本比例，不是专家轨迹数量，也不是判别器样本比例。
-  batch_size=256 时三个固定比例实际取 6、12、25 个专家样本。
+round1.json：原始第一轮，24 次
+- 专家采样：原始衰减计划或固定 0.025 / 0.05 / 0.1。
+- Actor/Critic 同用 OAdam / Adam，tau=0.02。
+- seed=0,1,2。
 
-round2.sh：Critic 稳定性，18 次
-- 先按第一轮同一配置的 3 个 seed 共同表现选择配置。
+round2.json：Critic 搜索，18 次
 - critic_lr：7.3e-4 / 3e-4 / 1e-4。
 - target_update_tau：0.02 / 0.005。
-- seed=0,1,2；其余继承第一轮选中的配置。
-- 这里只改变 Critic 学习率，Actor 和 Temperature 学习率沿用选中配置。
+- seed=0,1,2。
+- 固定参数已经写好，可以直接运行。
 
-round3.sh：温度，18 次
-- init_temp：1.0 / 0.1；temp_lr：7.3e-4 / 3e-4 / 1e-4。
-- seed=0,1,2；其余继承第二轮选中的配置。
-- 若第二轮无改善，可以继续继承第一轮的最佳配置。
+round3.json：温度搜索，18 次
+- init_temp：1 / 0.1。
+- temp_lr：7.3e-4 / 3e-4 / 1e-4。
+- seed=0,1,2。
+- 当前静态基线同样是第一轮的 Adam + 0.025，critic_lr=7.3e-4、tau=0.02。
+- 第二轮得到更好的 Critic 配置后，手动修改本 JSON 的 fixed_overrides；
+  不会自动读取或选择第二轮结果。
 
-confirm.sh：独立 seed 确认，2 次
-- 继承最终候选的全部超参数，用 seed=3,4 从头运行。
-- 只有两个任务，因此不会占满 8 个 worker。
-- 与已有 seed=0,1,2 合并统计，得到 5 个 seed 的结果。
+confirm.json：独立 seed 检查，2 次
+- seed=3,4。
+- 当前也明确写入第一轮 Adam + 0.025 基线。
+- 正式确认最终候选前，手动把最终超参数写入 fixed_overrides。
 
-运行方法
-先进入项目目录：
+运行（无需提供历史运行目录）
 cd /home/ubuntu/wangchenyang/rlzero/rlfromscratch
 
-先预览第一轮：
-bash search/HyPESAC/humanoid/round1.sh --dry-run
+预览第二轮：
+bash search/HyPESAC/humanoid/round2.sh --dry-run
 
-运行第一轮：
+运行第二轮：
+bash search/HyPESAC/humanoid/round2.sh
+
+其他阶段：
 bash search/HyPESAC/humanoid/round1.sh
+bash search/HyPESAC/humanoid/round3.sh
+bash search/HyPESAC/humanoid/confirm.sh
 
-第一轮结束后，将占位路径替换为选中配置的任意一个 seed 的运行目录：
-bash search/HyPESAC/humanoid/round2.sh --from-run /绝对路径/第一轮选中的运行目录
+默认 2 张 GPU，8 个 worker，每卡 4 个进程；单次 trial 超时 48 小时。
+覆盖并行设置：
+bash search/HyPESAC/humanoid/round2.sh --workers 8 --gpus 0,0,0,0,1,1,1,1
 
-第二轮结束后：
-bash search/HyPESAC/humanoid/round3.sh --from-run /绝对路径/第二轮选中的运行目录
+训练与评价口径
+- 每个 trial 收集 100 万策略交互步，15625 epochs，每轮 64 步/64 次更新。
+- 判别器额外交互计入 TensorBoard 的总 interaction_step。
+- 评估使用环境真实回报，每次 10 条轨迹；以最后 3 次评估的均值汇总各 seed，
+  不用单次最高回报作为配置优劣的唯一依据。
+- 日志目录：outputs/HyPESAC-Humanoid-<阶段名称>/<时间戳>/<参数组合>/。
+- 每次重新运行创建新的时间戳目录；旧失败日志保留。
 
-最终确认：
-bash search/HyPESAC/humanoid/confirm.sh --from-run /绝对路径/最终选中的运行目录
-
-后续阶段也支持 --dry-run；必须提供 --from-run，避免意外退回较差的默认配置。
-不自动依次启动所有阶段，先查看结果再决定继承哪个配置。
-三轮全部运行共 60 次，加确认共 62 次；建议先运行第一轮。
-如果第一轮各配置都很差，不要机械继续，先检查 Q、温度、回报与判别器奖励。
-
-并行参数可覆盖，例如：
-bash search/HyPESAC/humanoid/round1.sh --workers 8 --gpus 0,0,0,0,1,1,1,1
-
-日志目录
-outputs/HyPESAC-Humanoid-round1-mixing-optimizer/<时间戳>/
-outputs/HyPESAC-Humanoid-round2-critic/<时间戳>/
-outputs/HyPESAC-Humanoid-round3-temperature/<时间戳>/
-outputs/HyPESAC-Humanoid-confirm/<时间戳>/
-每个运行有 stdout.log、TensorBoard events、.hydra/config.yaml 和 search_exit.json。
-
-比较口径
-- 使用最后 3 次已记录评估的平均回报，再统计三个 seed 的均值、标准差和最差 seed。
-- 每次评估 10 条轨迹；默认最后 3 次约位于 85、90、95 万策略采样步，
-  最后一个已记录评估并不是 100 万步结束后新做的评估。
-- 搜参结果要求完整预算并正常退出，不能仅选某一次的最高回报。
-- 同时查看 critic/q_value、critic/q_loss、temp/value 和非有限数值。
-- 后续阶段选择基于三个 seed 的配置；--from-run 只是读取该配置的参数。
+已知启动错误的处理
+此前 --from-run 将字符串序列化为带引号的 Hydra override，shell 的文件检查
+把引号也当成路径字符，导致报 Expert dataset not found。
+当前数据路径直接写在静态 fixed_overrides 中，没有额外的字符串引号，
+因此不再经过这个发生错误的参数继承流程。

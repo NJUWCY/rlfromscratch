@@ -82,14 +82,13 @@ class SAC(OffPolicyAlgorithm):
             with torch.no_grad():
                 target = rewards + (1 - dones) * nstep_gamma * self.agent.get_value(next_states,temperature=self.log_temp.detach().exp(),absorbing=next_absorbing)
                     
-            q1, q2 = self.agent.get_double_q_function(states, actions)
-            
-            td_error1 = target - q1
-            td_error2 = target - q2
-            
+            if self.agent.double_critic:
+                q_values = self.agent.get_double_q_function(states, actions)
+            else:
+                q_values = (self.agent.get_q_function(states, actions),)
+            td_errors = [target - q for q in q_values]
+            q_loss = self.critic_loss_coef * sum(torch.mean(error**2) for error in td_errors)
 
-            q_loss = self.critic_loss_coef * (torch.mean(td_error1**2) + torch.mean(td_error2**2))
-            
             # do gradient update to the agent 
             self.critic_optimizer.zero_grad()
             q_loss.backward()
@@ -136,8 +135,8 @@ class SAC(OffPolicyAlgorithm):
             result.add_metric("actor/mean_action", mu.mean().item())
             result.add_metric("actor/std_action", std.mean().item())
         result.add_metric("critic/q_value",q.mean().item())
-        result.add_metric("critic1/td_error_abs", torch.abs(td_error1).mean().item())
-        result.add_metric("critic2/td_error_abs", torch.abs(td_error2).mean().item())
+        for index, error in enumerate(td_errors, start=1):
+            result.add_metric(f"critic{index}/td_error_abs", error.abs().mean().item())
         result.add_metric("critic/q_loss", q_loss.item())
         result.add_metric("actor/loss", actor_loss.item())
         result.add_metric("actor/entropy", -log_probs.mean().item())
