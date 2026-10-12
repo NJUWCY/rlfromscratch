@@ -42,6 +42,9 @@ class BehaviorCloning(OfflineAlgorithm):
         # Gaussian std parameters and a discrete policy's encoder belong to actor.
         self.actor_optimizer = OPTIMIZER_DICT[bc_args.actor_optimizer](
             self.agent.actor.parameters(), lr=bc_args.actor_lr)
+        self.l2_coef = float(getattr(bc_args, "l2_coef", 0.0))
+        if not np.isfinite(self.l2_coef) or self.l2_coef < 0:
+            raise ValueError("l2_coef must be finite and non-negative")
 
     def _update_policy(self, batch):
         self.agent.actor.train()
@@ -49,13 +52,18 @@ class BehaviorCloning(OfflineAlgorithm):
             log_probs = self.agent.log_prob(batch["states"], batch["actions"])
             if log_probs.ndim != 1 or len(log_probs) != len(batch["states"]):
                 raise ValueError("The policy must return one joint log-probability per action")
-            loss = -log_probs.mean()
-            if not torch.isfinite(loss):
+            nll = -log_probs.mean()
+            if not torch.isfinite(nll):
                 raise FloatingPointError("BC negative log-likelihood is not finite")
+            # Explicit L2 penalty on every actor parameter, l2_coef * sum ||theta||^2.
+            l2_norm = sum(p.pow(2).sum() for p in self.agent.actor.parameters() if p.requires_grad)
+            loss = nll + self.l2_coef * l2_norm if self.l2_coef > 0 else nll
             self.actor_optimizer.zero_grad()
             loss.backward()
             self.actor_optimizer.step()
         result.add_metric("actor/loss", loss.item())
+        result.add_metric("actor/nll", nll.item())
+        result.add_metric("actor/l2_norm", l2_norm.item())
         result.add_metric("actor/log_prob", log_probs.detach().mean().item())
         result.add_metric("actor/lr", self.actor_optimizer.param_groups[0]["lr"])
         return result

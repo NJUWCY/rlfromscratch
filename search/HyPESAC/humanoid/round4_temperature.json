@@ -15,7 +15,7 @@
     "algorithm.sampling_schedule=[[0.025,0.025,1000000]]",
     "algorithm.rl.critic_optimizer=Adam",
     "algorithm.rl.rescale=true",
-    "algorithm.rl.actor_lr=0.00073",
+    "algorithm.rl.actor_lr=0.0003",
     "algorithm.rl.critic_lr=0.0001",
     "algorithm.rl.target_update_tau=0.005",
     "expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/sac_Humanoid-v5_newest_100eps_min_reward_0.hdf5"

@@ -15,8 +15,10 @@ for env_name in "${env_names[@]}"; do
         algorithm=bc env=mujoco env.name="${env_name}" \
         env.num_training_envs=1 env.num_testing_envs=1 \
         env.obs_norm=false env.absorbing=false \
-        total_epoch=100000 update_step_per_epoch=1 interact_per_epoch=0 \
-        test_interval=5000 test_episodes=10 \
+        algorithm.actor_lr=1e-5 \
+        algorithm.l2_coef=1e-3 \
+        total_epoch=150000 update_step_per_epoch=1 interact_per_epoch=0 \
+        test_interval=2000 test_episodes=10 \
         save_interval=5000 train_log_interval=1000 \
         expert_dataset.data_path="${PWD}/outputs/collected/SAC-Mujoco/sac_${env_name}_newest_100eps_min_reward_0.hdf5" \
         expert_dataset.trajectory_num=5 expert_dataset.subsample_frequency=1 \

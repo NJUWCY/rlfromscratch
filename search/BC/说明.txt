@@ -1,0 +1,52 @@
+BC：五个 MuJoCo 环境的学习率 / L2 搜索
+=======================================
+
+运行：
+cd /home/ubuntu/wangchenyang/rlzero/rlfromscratch
+bash search/BC/bc_param_search.sh
+
+预览（不启动训练）：
+bash search/BC/bc_param_search.sh --dry-run
+
+搜索范围：
+- env.name：Ant-v5、HalfCheetah-v5、Hopper-v5、Walker2d-v5、Humanoid-v5。
+- algorithm.actor_lr：1e-5、3e-5、1e-4、3e-4。
+- algorithm.l2_coef：0、1e-5、1e-4、1e-3。
+- seed：仅 0。
+每个环境 16 组，共 80 个独立实验；每个 trial 只运行一个环境。
+
+默认并行：
+--workers 8 --gpus 0,0,0,0,1,1,1,1
+即两张卡，每卡四个进程；每个 trial 超时 48 小时。
+例如减少并行：
+bash search/BC/bc_param_search.sh --workers 4 --gpus 0,0,1,1
+
+run_bc_search.py 直接调用 scripts/bc.sh。
+只通过搜索覆盖环境、学习率、L2 系数和 seed，其余使用脚本及配置的当前值：
+- SAC-Mujoco 数据，每个环境对应 sac_<env>_newest_100eps_min_reward_0.hdf5。
+- 5 条专家轨迹，subsample_frequency=1。
+- 当前 total_epoch=150000、update_step_per_epoch=1。
+- 当前 test_interval=2000、test_episodes=10。
+- 默认 auto Actor 在 MuJoCo 中选择 TanhGaussianActor。
+- 不采集训练用在线数据。
+未来修改 scripts/bc.sh 或 BC 配置后，新启动的搜索也会沿用修改后的默认值。
+
+当前 L2 定义：
+loss = -mean(log pi(a|s)) + l2_coef * sum(actor_parameter ** 2)
+覆盖所有可训练 Actor 参数，系数没有额外的 1/2 因子。
+l2_coef=0 为纯最大似然对照；不是独立的 AdamW 权重衰减参数。
+
+更改搜索范围时编辑 bc_search.json 的 search_space。
+不要用末尾 env.name / algorithm.actor_lr / algorithm.l2_coef 覆盖搜索维度：
+那会把多个 trial 覆盖成相同参数，导致重复训练。
+可追加其他固定参数，例如 total_epoch=50000；
+换单个种子可用 seed=1（或修改 JSON 的 seed 列表，保留一个元素）。
+
+输出：
+outputs/BC-Mujoco-lr-l2-search/<时间戳>/<环境与参数组合>/
+每个 trial 保存 stdout.log、search_exit.json、.hydra/config.yaml、
+TensorBoard 日志和模型。
+比较各环境内的评估回报，避免直接跨环境比较回报数值。
+当前只有一个 seed，只适合初步筛选；后续可对候选配置补充种子。
+
+基类及算法、scripts/bc.sh 均不由此搜索脚本修改。

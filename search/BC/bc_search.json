@@ -1,0 +1,29 @@
+{
+  "run_script": "search/BC/run_bc_search.py",
+  "sweep_name": "BC-Mujoco-lr-l2-search",
+  "fixed_overrides": [],
+  "search_space": {
+    "env.name": [
+      "Ant-v5",
+      "HalfCheetah-v5",
+      "Hopper-v5",
+      "Walker2d-v5",
+      "Humanoid-v5"
+    ],
+    "algorithm.actor_lr": [
+      1e-05,
+      3e-05,
+      0.0001,
+      0.0003
+    ],
+    "algorithm.l2_coef": [
+      0.0,
+      1e-05,
+      0.0001,
+      0.001
+    ],
+    "seed": [
+      0
+    ]
+  }
+}
