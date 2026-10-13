@@ -1,0 +1,97 @@
+PWIL-SAC 实现说明
+================
+
+依据：PWIL (Primal Wasserstein Imitation Learning, ICLR 2021)，
+Algorithm 1、式 (6)、4.1 节和附录 A.1；参考 outputs/pwil 中的代码。
+
+本实现复用当前库 SAC、TanhGaussianActor、ReplayBuffer 和 ExpertDataset。
+它是 PWIL 奖励结合 SAC，不是参考代码的 D4PG 实验严格复现。
+奖励标准化和逐步贪心奖励计算已按 outputs/pwil/rewarder.py 对齐。
+专家选择和 float32 存储使用当前库的统一实现。
+没有判别器，也没有对抗训练或 BC 辅助损失。
+
+运行五个环境（按顺序）：
+cd /home/ubuntu/wangchenyang/rlzero/rlfromscratch
+bash scripts/pwil.sh
+
+只运行 Humanoid：
+bash scripts/pwil.sh env.name=Humanoid-v5
+
+可选：
+bash scripts/pwil.sh env.name=Humanoid-v5 env.obs_norm=true
+bash scripts/pwil.sh env.name=Hopper-v5 algorithm.observation_only=true
+bash scripts/pwil.sh env.name=Ant-v5 expert_dataset.subsample_frequency=1
+bash scripts/pwil.sh env.name=Ant-v5 algorithm.num_transitions_rb=0
+
+环境和数据：
+- Ant-v5、HalfCheetah-v5、Hopper-v5、Walker2d-v5、Humanoid-v5。
+- outputs/collected/SAC-Mujoco/sac_<env>_newest_100eps_min_reward_0.hdf5。
+- 默认随机选 5 条专家轨迹，再按每条轨迹的随机起点每 20 步取一个样本。
+  一条 1000 步轨迹提供 50 个原子，5 条提供 250 个。
+  ExpertDataset 在加载时完成一次随机起点下采样；PWIL 直接使用整个专家
+  buffer 计算奖励和预填充，不再维护额外的下采样索引。
+  所有算法默认 expert_dataset.random_start=true；frequency=1 时保留全部数据。
+  所有算法统一用 np.random.choice 不放回选择轨迹；frequency>1 且开启
+  random_start 时，用 np.random.randint 选择每条轨迹的起点。
+  起点范围为 [0, min(frequency, 轨迹长度)-1]，短轨迹至少保留一条转移。
+  frequency=1 时不额外抽取起点。随机选择由已有 set_seed 控制。
+  专家 state/action/next_state 按原有实现转换为 float32。
+  如需固定从第 0 步采样，可设置 expert_dataset.random_start=false。
+- 所有动作都使用环境坐标；Humanoid 的范围为 [-0.4, 0.4]。
+
+奖励：
+1. 拼接专家 state/action（observation_only=true 时只用 state），按官方实现
+   使用 preprocessing.StandardScaler() 在专家原子上 fit 一次，再用同一个
+   scaler.transform() 处理专家和在线策略样本；零方差等数值处理交给 sklearn。
+   均值和尺度可通过 rewarder.scaler.mean_ / scale_ 查看。
+2. 每个环境独立保存剩余专家权重。回合开始每个原子权重 1/D，每步策略
+   质量为 1/T - 1e-6，按标准化欧氏距离依次匹配最近的可用专家原子并消耗其权重。
+3. cost = sum(运输质量 * 距离)。reward = alpha * exp(-beta*T/sqrt(ds+da)*cost)。
+   默认 alpha=5、beta=5、T=env.max_episode_length=1000。
+   与参考一致，observation_only 模式也保留 sqrt(ds+da) 的缩放常数。
+4. 严格采用参考 compute_reward 的浮点运算顺序、1e-6 修正和 np.delete：
+   匹配权重耗尽时删除该样本和权重。expert_atoms / expert_weights 是按环境
+   分开的列表，每个元素随本回合消耗而缩短；reset 重新生成全量样本和 1/D 权重。
+   不再使用整数 remaining；steps 仅记录本回合步数，last_cost 保存最近一步代价。
+   专家 state/action 使用 ExpertDataset 的 float32 数据；wrapper 像参考
+   SinglePrecisionWrapper 一样将在线 state/action 转成 float32 后计算奖励。
+5. 在原始环境外添加训练奖励 wrapper，按访问顺序计算后直接写入 replay。
+   不在随机采样 replay 时重算，也不让评估消耗训练环境的专家权重。
+6. 真正终止和 time-limit 截断都会重置该环境的匹配权重；只对真正终止
+   关闭 SAC bootstrap，time-limit 保留原库的 bootstrap 处理。
+   提前结束时直接重置，不增加吸收状态或补足剩余回合。
+
+专家预填充：
+- 默认将选中的专家转移循环重复到 50000 条，奖励统一设为 alpha。
+- 使用原 HDF5 中对应的真实 one-step next_observation、terminal、timeout。
+  不把下一个间隔 20 步的专家状态当作当前动作的下一状态。
+  这是相对参考代码对下采样轨迹的近似预填充的一项有意区别。
+- 专家和在线数据使用同一个 FIFO replay。专家会随在线数据覆盖，不强制
+  每个 batch 保持固定专家比例。重复预填充只发生一次，不消耗在线交互计数。
+- buffer_size 是总容量；多环境时 num_transitions_rb 向下取整到环境数的倍数。
+  预填充数量不能大于 replay 总容量。
+
+观测归一化：
+- PWIL 距离始终使用固定专家标准化，与 env.obs_norm 无关。
+- env.obs_norm=true 时，策略和 replay 也采用由所选专家原子估计的冻结统计量，
+  保证预填充与后续在线样本坐标一致；评估复用同一统计量，并随模型保存。
+
+默认训练配置：
+- SAC 双 Q、batch_size=256、actor/critic/temp lr=3e-4、tau=0.005。
+- gamma=0.99、nstep=1；learn_temp=true、update_log_temp=true。
+- Humanoid 的 per-dimension target_entropy=-1+log(0.4)，其他任务为 -1。
+- 15625 epochs，每轮 64 次交互及 64 次 SAC 更新，1000 步随机动作预热。
+  单环境预算为 100 万步；每 156 epochs 评估 10 条轨迹。
+- 当前只支持向量连续动作和 nstep=1，不支持 absorbing=true。
+- 论文 MuJoCo 实验使用 D4PG、nstep=5、不同网络/更新频率及旧版环境数据；
+  本实现采用现有 SAC 和 v5 数据，不能直接宣称复现论文分数。
+
+输出：outputs/<env>-PWIL/<时间戳>/。
+- test/episode_rewards_mean 和 train/reward_mean：原始任务回报。
+- train/pwil/reward_mean/min/max：当前采集批次的 PWIL 奖励。
+- train/pwil/episode_return_mean：最近完成回合的 PWIL 累计奖励。
+- train/pwil/expert_atoms、train/pwil/prefilled_transitions：实际原子及预填充数。
+- best_model.pth / newest_model.pth；启用策略归一化时另存对应 obs_rms。
+
+核心文件：algorithm/pwil.py；入口 run_pwil.py；配置 config/algorithm/pwil.yaml。
+训练奖励 wrapper 仅由 PWIL 安装，不改变其他算法的交互和采样逻辑。

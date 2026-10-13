@@ -1,26 +1,30 @@
 {
   "run_script": "search/BC/run_bc_search.py",
-  "sweep_name": "BC-Mujoco-lr-l2-search",
-  "fixed_overrides": [],
+  "sweep_name": "BC-Mujoco-std-obsnorm-search",
+  "fixed_overrides": [
+    "algorithm.actor_lr=0.0003",
+    "+bc_search_l2.Humanoid-v5=0.0",
+    "+bc_search_l2.HalfCheetah-v5=0.0001",
+    "+bc_search_l2.Walker2d-v5=0.0",
+    "+bc_search_l2.Ant-v5=0.00001",
+    "+bc_search_l2.Hopper-v5=0.001",
+    "algorithm.l2_coef='${oc.select:bc_search_l2.${env.name}}'"
+  ],
   "search_space": {
     "env.name": [
-      "Ant-v5",
+      "Humanoid-v5",
       "HalfCheetah-v5",
-      "Hopper-v5",
       "Walker2d-v5",
-      "Humanoid-v5"
+      "Ant-v5",
+      "Hopper-v5"
     ],
-    "algorithm.actor_lr": [
-      1e-05,
-      3e-05,
-      0.0001,
-      0.0003
+    "env.obs_norm": [
+      true,
+      false
     ],
-    "algorithm.l2_coef": [
-      0.0,
-      1e-05,
-      0.0001,
-      0.001
+    "algorithm.state_dependent_std": [
+      false,
+      true
     ],
     "seed": [
       0

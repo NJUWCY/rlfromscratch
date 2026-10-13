@@ -112,7 +112,8 @@ def main(cfg: DictConfig):
                                   args.expert_dataset.subsample_frequency,
                                   args.gamma,
                                   1,
-                                  absorbing=args.env.absorbing)
+                                  absorbing=args.env.absorbing,
+                                  random_start=args.expert_dataset.random_start)
 
     algorithm: DAC | DACSAC
 

@@ -10,6 +10,9 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export PYTHONUNBUFFERED=1
 export PYTHONDONTWRITEBYTECODE=1
 
+# Round 2: best lr/L2 per environment; compare global/state-dependent std and obs normalization.
+# 5 environments x 2 std settings x 2 normalization settings x seed 0 = 20 runs.
+# Humanoid with obs_norm=true is scheduled first; eight jobs across two GPUs.
 exec python parallel_search.py \
     --config "$SEARCH_DIR/bc_search.json" \
     --workers "${WORKERS:-8}" --gpus "${GPUS:-0,0,0,0,1,1,1,1}" \

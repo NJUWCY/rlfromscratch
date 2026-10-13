@@ -86,6 +86,7 @@ def main(cfg: DictConfig):
             args.expert_dataset.trajectory_num,
             args.expert_dataset.subsample_frequency,
             gamma=args.gamma, nstep=1, absorbing=False,
+            random_start=args.expert_dataset.random_start,
         )
         expert_actions = expert_buffer.buffer["actions"]
         if (not np.isfinite(expert_actions).all()

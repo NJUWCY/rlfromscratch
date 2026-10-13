@@ -22,18 +22,19 @@
   ],
   "search_space": {
     "algorithm.rl.init_temp": [
-      1.0,
       0.1
     ],
     "algorithm.rl.temp_lr": [
       0.00073,
-      0.0003,
-      0.0001
+      0.0003
     ],
     "seed": [
-      0,
-      1,
-      2
+      0
+    ],
+    "algorithm.rl.target_entropy": [
+      -1.0,
+      -1.916290731874155,
+      -2.5
     ]
   }
 }

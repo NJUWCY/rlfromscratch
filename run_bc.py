@@ -92,6 +92,7 @@ def main(args: DictConfig):
         args.expert_dataset.data_path, observation_space, action_space,
         args.expert_dataset.trajectory_num, args.expert_dataset.subsample_frequency,
         gamma=args.gamma, nstep=1, absorbing=False,
+        random_start=args.expert_dataset.random_start,
     )
     os.makedirs(args.log_dir, exist_ok=True)
     logger = Logger(

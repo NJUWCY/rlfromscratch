@@ -41,6 +41,8 @@ expert_dataset:
   data_path: ???
   trajectory_num: 10
   subsample_frequency: 10
+  # Independent random offset for each trajectory when frequency > 1.
+  random_start: true
   
 
 

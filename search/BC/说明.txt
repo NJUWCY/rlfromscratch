@@ -1,4 +1,4 @@
-BC：五个 MuJoCo 环境的学习率 / L2 搜索
+BC 第二轮：标准差形式 / 观测归一化对照
 =======================================
 
 运行：
@@ -8,12 +8,27 @@ bash search/BC/bc_param_search.sh
 预览（不启动训练）：
 bash search/BC/bc_param_search.sh --dry-run
 
+固定上一轮各环境最后三次评估平均回报较好的 lr / L2：
+- Ant-v5：actor_lr=3e-4，l2_coef=1e-5。
+- HalfCheetah-v5：actor_lr=3e-4，l2_coef=1e-4。
+- Hopper-v5：actor_lr=3e-4，l2_coef=1e-3。
+- Walker2d-v5：actor_lr=3e-4，l2_coef=0。
+- Humanoid-v5：actor_lr=3e-4，l2_coef=0。
+
 搜索范围：
-- env.name：Ant-v5、HalfCheetah-v5、Hopper-v5、Walker2d-v5、Humanoid-v5。
-- algorithm.actor_lr：1e-5、3e-5、1e-4、3e-4。
-- algorithm.l2_coef：0、1e-5、1e-4、1e-3。
+- algorithm.state_dependent_std：[false, true]。
+  false 使用全局可学习标准差，不是固定标准差；仍然是概率策略和最大似然训练。
+- env.obs_norm：[true, false]。
+  true 使用训练用专家数据估计冻结的观测均值/方差，评估沿用相同统计量。
 - seed：仅 0。
-每个环境 16 组，共 80 个独立实验；每个 trial 只运行一个环境。
+每个环境 4 组，共 20 个独立实验。包含 state_dependent_std=true、
+obs_norm=false 的原配置对照。默认先运行 Humanoid 开启归一化的两组，
+然后其余组合；使用 --shuffle 会改变此顺序。
+
+bc_search.json 中 bc_search_l2 是环境名到 L2 系数的配置表。
+algorithm.l2_coef 通过 Hydra/OmegaConf 的 oc.select 按 env.name 选择对应值。
+它只决定该次运行的正则系数，不改变 BC 算法；.hydra/config.yaml 会保存该映射。
+全部环境 actor_lr 固定为 3e-4。
 
 默认并行：
 --workers 8 --gpus 0,0,0,0,1,1,1,1
@@ -21,32 +36,29 @@ bash search/BC/bc_param_search.sh --dry-run
 例如减少并行：
 bash search/BC/bc_param_search.sh --workers 4 --gpus 0,0,1,1
 
-run_bc_search.py 直接调用 scripts/bc.sh。
-只通过搜索覆盖环境、学习率、L2 系数和 seed，其余使用脚本及配置的当前值：
-- SAC-Mujoco 数据，每个环境对应 sac_<env>_newest_100eps_min_reward_0.hdf5。
+run_bc_search.py 继续调用 scripts/bc.sh，其他训练设置沿用当前脚本及配置：
+- SAC-Mujoco 数据：sac_<env>_newest_100eps_min_reward_0.hdf5。
 - 5 条专家轨迹，subsample_frequency=1。
-- 当前 total_epoch=150000、update_step_per_epoch=1。
-- 当前 test_interval=2000、test_episodes=10。
-- 默认 auto Actor 在 MuJoCo 中选择 TanhGaussianActor。
-- 不采集训练用在线数据。
-未来修改 scripts/bc.sh 或 BC 配置后，新启动的搜索也会沿用修改后的默认值。
+- total_epoch=150000、update_step_per_epoch=1、batch_size=256。
+- test_interval=2000、test_episodes=10。
+- auto Actor 在 MuJoCo 中选择 TanhGaussianActor。
+- initialize=false、common_net=false；不采集训练用在线数据。
 
-当前 L2 定义：
+L2 定义：
 loss = -mean(log pi(a|s)) + l2_coef * sum(actor_parameter ** 2)
-覆盖所有可训练 Actor 参数，系数没有额外的 1/2 因子。
-l2_coef=0 为纯最大似然对照；不是独立的 AdamW 权重衰减参数。
+覆盖所有可训练 Actor 参数，没有额外 1/2 因子。
+l2_coef=0 是纯最大似然；不是独立 AdamW 权重衰减。
 
-更改搜索范围时编辑 bc_search.json 的 search_space。
-不要用末尾 env.name / algorithm.actor_lr / algorithm.l2_coef 覆盖搜索维度：
-那会把多个 trial 覆盖成相同参数，导致重复训练。
-可追加其他固定参数，例如 total_epoch=50000；
-换单个种子可用 seed=1（或修改 JSON 的 seed 列表，保留一个元素）。
+更改实验范围时编辑 bc_search.json。
+不要在命令末尾覆盖 env.name、env.obs_norm 或 algorithm.state_dependent_std，
+否则多个 trial 会变成相同配置。可追加其他固定参数，例如 total_epoch=50000。
+脚本只生成并调度训练，不会根据运行结果自动调整参数。
 
 输出：
-outputs/BC-Mujoco-lr-l2-search/<时间戳>/<环境与参数组合>/
+outputs/BC-Mujoco-std-obsnorm-search/<时间戳>/<环境与参数组合>/
 每个 trial 保存 stdout.log、search_exit.json、.hydra/config.yaml、
-TensorBoard 日志和模型。
-比较各环境内的评估回报，避免直接跨环境比较回报数值。
-当前只有一个 seed，只适合初步筛选；后续可对候选配置补充种子。
+TensorBoard 日志和模型；启用归一化时同时保存观测统计量。
+上一轮 outputs/BC-Mujoco-lr-l2-search 下的日志保留。
 
-基类及算法、scripts/bc.sh 均不由此搜索脚本修改。
+优先在同一环境比较最后三次评估平均回报，并结合最高回报和回报波动。
+单种子只适合初步筛选，后续需补充种子确认稳定性。

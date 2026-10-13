@@ -11,12 +11,23 @@ for arg in "$@"; do
 done
 
 for env_name in "${env_names[@]}"; do
+    # Best final-three evaluation mean from the 2026-10-12 BC search.
+    obs_norm=true
+    state_dependent_std=false
+    l2_coef=0
+    case "$env_name" in
+        Ant-v5) obs_norm=false; state_dependent_std=true; l2_coef=1e-5 ;;
+        HalfCheetah-v5) l2_coef=1e-4 ;;
+        Hopper-v5) state_dependent_std=true; l2_coef=1e-3 ;;
+    esac
+
     python run_bc.py \
         algorithm=bc env=mujoco env.name="${env_name}" \
         env.num_training_envs=1 env.num_testing_envs=1 \
-        env.obs_norm=false env.absorbing=false \
-        algorithm.actor_lr=1e-5 \
-        algorithm.l2_coef=1e-3 \
+        env.obs_norm="${obs_norm}" env.absorbing=false \
+        algorithm.actor_lr=3e-4 \
+        algorithm.l2_coef="${l2_coef}" \
+        algorithm.state_dependent_std="${state_dependent_std}" \
         total_epoch=150000 update_step_per_epoch=1 interact_per_epoch=0 \
         test_interval=2000 test_episodes=10 \
         save_interval=5000 train_log_interval=1000 \

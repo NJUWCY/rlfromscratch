@@ -508,6 +508,12 @@ class TrajectoryRollout:
 
 
 class ExpertDataset(ReplayBuffer):
+    """Load paired transitions, with a per-trajectory random subsampling start.
+
+    Starts use NumPy's seeded RNG. Frequency 1 keeps every transition;
+    random_start=False restores fixed-start slicing.
+    """
+
     def __init__(self,file_path: str,
                  observation_space: gym.spaces.Box,
                  action_space: gym.spaces.Space,
@@ -516,6 +522,7 @@ class ExpertDataset(ReplayBuffer):
                  gamma:float=0.99,
                  nstep:int=1,
                  absorbing:bool=False,
+                 random_start:bool=True,
                  ):
         path = Path(file_path)
         suffix = path.suffix.lower()
@@ -538,6 +545,7 @@ class ExpertDataset(ReplayBuffer):
             raise ValueError(f"Expert dataset is empty: {path}")
 
         self.subsample_frequency = subsample_frequency
+        self.random_start = bool(random_start)
         self.trajectory_num = trajectory_num
 
         for k, v in data.items():
@@ -560,11 +568,19 @@ class ExpertDataset(ReplayBuffer):
         selected_idx = np.random.choice(
             len(all_trajectories), size=trajectory_num, replace=False
         )
-        # list of trajectory_num dicts; each dict holds subsampled transitions
-        trajectories: list[dict[str, np.ndarray]] = [
-            {key: value[::subsample_frequency] for key, value in all_trajectories[i].items()}
-            for i in selected_idx
-        ]
+        # Apply the same offset to every field, retaining real one-step
+        # next states and the original terminal/timeout labels. Short episodes
+        # still contribute at least one transition.
+        trajectories: list[dict[str, np.ndarray]] = []
+        self.subsample_starts = []
+        for i in selected_idx:
+            trajectory = all_trajectories[i]
+            length = len(trajectory["actions"])
+            start = (int(np.random.randint(min(subsample_frequency, length)))
+                     if self.random_start and subsample_frequency > 1 else 0)
+            self.subsample_starts.append(start)
+            trajectories.append({key: value[start::subsample_frequency]
+                                 for key, value in trajectory.items()})
 
         for i, (traj_idx, traj) in enumerate(zip(selected_idx, trajectories)):
             if "rewards" not in traj:
@@ -576,7 +592,7 @@ class ExpertDataset(ReplayBuffer):
             discounted_return = float((discounts * rewards).sum())
             print(
                 f"sampled expert trajectory {i}: original_idx={int(traj_idx)}, "
-                f"length={rewards.shape[0]}, "
+                f"length={rewards.shape[0]}, subsample_start={self.subsample_starts[i]}, "
                 f"return={undiscounted_return:.4f}, "
                 f"discounted_return(gamma={gamma})={discounted_return:.4f}"
             )
