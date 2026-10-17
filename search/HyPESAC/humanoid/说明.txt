@@ -37,16 +37,22 @@ round2 结果后的新增搜索
    seed: 0、1、2
    更新间隔仍为 157 epochs，每次更新使用同一批当前策略轨迹，
    discriminator_train_steps 控制该次更新内重新采样 minibatch 的次数。
-   当前默认 Actor/Critic/温度仍为 round2 最佳基线：
-   actor_lr=7.3e-4、critic_lr=1e-4、temp_lr=7.3e-4、init_temp=1。
-   运行前按前两阶段结果覆盖这四个参数。
+   已固定第四轮 2026-10-13_09-56-59 中末三次评估均值最高的温度配置：
+   init_temp=0.1、temp_lr=7.3e-4、target_entropy=-1.0（每动作维）。
+   保留自动温度学习：learn_temp=true、update_log_temp=true、temp_optimizer=Adam。
+   同步该实验的 actor_lr=3e-4、critic_lr=1e-4、tau=0.005。
+   来源：outputs/HyPESAC-Humanoid-round4-temperature/2026-10-13_09-56-59/
+         init-temp-0.1_temp-lr-0.00073_seed-0_target-entropy-1.0。
+   六组候选均正常结束；该组 seed=0 末三次回报为 532.53、521.73、606.93，
+   均值 553.73，仅为该单 seed 搜索中的最佳候选；本轮用三个 seed 检验。
+   固定的是温度学习超参数，不是训练结束时的温度值；每个 trial 从头训练。
    此搜索保留现有判别器学习率按轮次衰减的机制。
 
 运行
 cd /home/ubuntu/wangchenyang/rlzero/rlfromscratch
 bash search/HyPESAC/humanoid/round3_actor.sh
 
-之后分别运行（先填写选出的固定参数）：
+之后分别运行（第四轮需确认 Actor/Critic，当前第五轮已配置，可直接运行）：
 bash search/HyPESAC/humanoid/round4_temperature.sh
 bash search/HyPESAC/humanoid/round5_discriminator.sh
 

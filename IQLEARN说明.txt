@@ -1,0 +1,69 @@
+IQ-Learn 实现说明
+=================
+参考：/home/ubuntu/wangchenyang/iq_learn/iq.py、train_iq.py。
+实现：algorithm/iqlearn.py；入口：run_iqlearn.py。
+配置：config/algorithm/iqlearn.yaml；运行脚本：scripts/iqlearn.sh。
+参考许可证：algorithm/IQ_LEARN_LICENSE.txt。
+
+value_loss 的两个参数
+algorithm.iq_loss_type: v0 / value
+algorithm.v0_mix_type: expert / online / mix
+默认：value + mix。
+
+v0：始终计算 (1-gamma)*mean(V(s0))，使用真实轨迹初始状态。
+- expert：从所选专家轨迹的原始起点采样 B 条，起点在随机 subsample 之前保存。
+- online：从训练环境实际收集的 reset 观测池中采样 B 条。
+- mix：专家起点和在线起点各采样 B 条，等权平均。
+env.collect_init_states 默认 false；scripts/iqlearn.sh 显式设为 true。
+Monitor 在 reset 中保存原始初始观测，通过 pop_initial_states() 批量取出并清空。
+IQ-Learn 在 initialize 和每轮交互结束后通过 env_method 汇总，支持多进程环境，
+不在每次梯度更新时传输数据。仅训练环境启用，构造时用于设种子的 reset 不计入。
+IQInitialStateWrapper 已移除；online/mix 的 v0 要求此开关为 true。
+在线池记录首次 reset 和每次终止/超时后的自动 reset 观测，不使用旧轨迹的终止观测，
+不额外 reset 训练环境，也不收集评估环境的起点。池容量使用在线 replay 的 buffer_size。
+池未满时保留全部起点，满后保留最近起点。均为有放回均匀采样。
+专家和在线起点保存为原始 float32，采样时按当前训练环境统计量归一化。
+因此估计的是已收集轨迹起点的经验分布期望，不是初始状态分布的精确积分。
+
+value：计算 value-bootstrap，其中 bootstrap=gamma*(1-done)*next_value。
+- expert：仅专家普通状态/转移。
+- online：仅在线普通状态/转移。
+- mix：0.5*专家均值 + 0.5*在线均值。
+
+旧 algorithm.loss、algorithm.use_true_v0 参数已移除。
+旧 value_expert 对应 iq_loss_type=value、v0_mix_type=expert。
+v0 不再支持用普通专家状态冒充起点的参考近似。
+
+其余训练流程
+每次更新取 B 条在线转移+B 条专家转移，B=algorithm.rl.batch_size（默认256）。
+环境奖励仅用于日志与评估。
+V(s)=min(Q1,Q2)(s,a)-temperature*log_pi(a|s)，a 来自当前策略。
+隐式奖励 r_Q=Q(s,a)-gamma*(1-done)*V(s')。
+IQ critic loss=-mean_expert(r_Q)+value_loss+正则项。
+两个 Q 分别计算 IQ 损失后取平均；不使用 SAC TD-MSE。
+regularize=true 添加 mean_mixed(r_Q^2)/(4*algorithm.alpha)。
+chi=true 或 div=chi 添加 mean_expert(r_Q^2)/(4*algorithm.alpha)。
+两种正则同时启用时叠加。div 还支持 null/hellinger/kl/kl2/kl_fix/js。
+v0_mix_type 只控制 value_loss 来源，不改变其他损失与 actor 的混合采样。
+actor 使用标准 SAC 目标；温度按 learn_temp 决定是否学习。
+use_target=true 时 next_value 不传播梯度；false 时保留梯度。
+真实终止不 bootstrap，超时沿用当前 replay 的 bootstrap 处理。
+
+运行
+cd /home/ubuntu/wangchenyang/rlzero/rlfromscratch
+bash scripts/iqlearn.sh
+bash scripts/iqlearn.sh env.name=Humanoid-v5 algorithm.iq_loss_type=v0 algorithm.v0_mix_type=mix
+bash scripts/iqlearn.sh env.name=Humanoid-v5 algorithm.iq_loss_type=value algorithm.v0_mix_type=online
+
+脚本使用现有五个 MuJoCo-v5 环境与 SAC-Mujoco 数据，每环境100万在线交互步，
+5条专家轨迹，subsample_frequency=5。每轮64步交互/64次更新。
+Ant、HalfCheetah 使用 value；Hopper、Walker2d、Humanoid 使用真实 v0。
+v0_mix_type 默认 mix，可用命令行覆盖。
+固定 temperature 分别为 Ant 0.001、HalfCheetah/Hopper/Walker2d 0.01、Humanoid 1.0。
+actor_lr=3e-5，critic_lr=3e-4，IQ alpha=0.5。
+
+范围
+连续控制在线 IQ-Learn，沿用当前库网络、环境动作坐标、归一化和保存接口。
+不是旧参考环境和网络结构的严格复现。
+未实现可选 critic gradient penalty、only_expert_states、VDICE actor、
+离散 SoftQ 或纯离线训练。不会提交/推送 Git。

@@ -29,11 +29,11 @@ class MuJoCoStateInfo(gym.Wrapper):
         return observation, reward, terminated, truncated, info
 
 
-def make_mujoco_env(env_name:str, max_episode_length=1000, absorbing=False):
+def make_mujoco_env(env_name:str, max_episode_length=1000, absorbing=False, collect_init_states=False):
     env = gym.make(env_name)
     env = TimeLimit(env, max_episode_steps=max_episode_length)
     env = MuJoCoStateInfo(env)
-    env = Monitor(env)
+    env = Monitor(env, collect_init_states=collect_init_states)
     env = TruncatedMonitor(env)
     if absorbing:
         # Outermost so that it also extends info["truncated_observation"].
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
 
     # env = gym.make("Hopper-v5",max_episode_steps=100)
-    # env = Monitor(env)
+    # env = Monitor(env, collect_init_states=collect_init_states)
     env.reset()
     re = 0
     for i in range(1001):

@@ -80,7 +80,7 @@ class SAC(OffPolicyAlgorithm):
 
             # calculate the q loss    
             with torch.no_grad():
-                target = rewards + (1 - dones) * nstep_gamma * self.agent.get_value(next_states,temperature=self.log_temp.detach().exp(),absorbing=next_absorbing)
+                target = rewards + (1 - dones) * nstep_gamma * self.agent.get_value(next_states,temperature=self.log_temp.detach().exp(),absorbing=next_absorbing,use_target=self.use_target,action_grad=False)
                     
             if self.agent.double_critic:
                 q_values = self.agent.get_double_q_function(states, actions)

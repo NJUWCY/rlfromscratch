@@ -49,6 +49,11 @@ class HyPE(DAC):
         self.discriminator_round = 0
         self.policy_interaction_step = 0
         self._policy_phase_start_step = self.interaction_step
+        self.disc_lr_decay = discriminator_args.disc_lr_decay if hasattr(discriminator_args, "disc_lr_decay") else False
+        self.discriminator_optimizer = OPTIMIZER_DICT[
+                self.discriminator_args.discriminator_optimizer](
+                    self.discriminator.parameters(), lr=self.disc_lr,
+                    weight_decay=self.discriminator_args.discriminator_weight_decay)
 
     def _policy_phase_step(self):
         # During policy collection this includes the current, not-yet-buffered
@@ -83,8 +88,10 @@ class HyPE(DAC):
         # A reset-mode phase still finishes when its whole budget is warmup.
         if (self.current_epoch + 1) % self.discriminator_train_interval == 0:
             rollout_steps = self._collect_discriminator_samples()
-            # garage starts a fresh OAdam each round and uses lr / max(1, round).
-            disc_lr = self.disc_lr / max(1, self.discriminator_round)
+            # Keep the per-round optimizer reset independent of LR decay.
+            disc_lr = self.disc_lr
+            if self.disc_lr_decay:
+                disc_lr /= max(1, self.discriminator_round)
             self.discriminator_optimizer = OPTIMIZER_DICT[
                 self.discriminator_args.discriminator_optimizer](
                     self.discriminator.parameters(), lr=disc_lr,

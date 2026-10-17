@@ -79,9 +79,11 @@ def make_env(args: DictConfig,is_training: bool,scale=False):
         env = gym.make(env_name, frameskip=1)
         env = atari_wrap(env, episode_life=is_training, clip_rewards=is_training, frame_stack=args.frame_stack, scale=scale,frame_skip=args.frame_skip)
     elif env_type=="mujoco":
-        env = make_mujoco_env(env_name,max_episode_length=args.max_episode_length,absorbing=getattr(args,"absorbing",False))
+        env = make_mujoco_env(env_name,max_episode_length=args.max_episode_length,absorbing=getattr(args,"absorbing",False),
+                              collect_init_states=is_training and getattr(args,"collect_init_states",False))
     elif env_type=="basic":
-        env = make_basic_env(env_name,max_episode_length=args.max_episode_length)
+        env = make_basic_env(env_name,max_episode_length=args.max_episode_length,
+                             collect_init_states=is_training and getattr(args,"collect_init_states",False))
     else:
         raise NotImplementedError(f"Environment {env_name} is not supported yet.")
     
@@ -104,12 +106,17 @@ def make_env_func(args: DictConfig, is_training: bool,seed=None):
                              frame_skip=args.frame_skip,
                              max_episode_steps=args.max_episode_length)
         elif env_type=="mujoco":
-            env = make_mujoco_env(env_name,max_episode_length=args.max_episode_length,absorbing=getattr(args,"absorbing",False))
+            env = make_mujoco_env(env_name,max_episode_length=args.max_episode_length,absorbing=getattr(args,"absorbing",False),
+                              collect_init_states=is_training and getattr(args,"collect_init_states",False))
         elif env_type=="basic":
-            env = make_basic_env(env_name,max_episode_length=args.max_episode_length)
+            env = make_basic_env(env_name,max_episode_length=args.max_episode_length,
+                             collect_init_states=is_training and getattr(args,"collect_init_states",False))
         else:
             raise NotImplementedError(f"Environment {env_name} is not supported yet.")
         env.reset(seed=seed)
+        # Seeding reset is discarded before actual collection starts.
+        if env_type in {"mujoco", "basic"} and is_training and getattr(args, "collect_init_states", False):
+            env.get_wrapper_attr("pop_initial_states")()
         env.action_space.seed(seed=seed)
         return env
     return _thunk

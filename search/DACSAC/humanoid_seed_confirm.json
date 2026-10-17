@@ -1,0 +1,101 @@
+{
+  "run_script": "run_dac.py",
+  "sweep_name": "Humanoid-v5-DACSAC-seed-confirm",
+  "fixed_overrides": [
+    "algorithm=dacsac",
+    "env=mujoco",
+    "env.name=Humanoid-v5",
+    "env.num_training_envs=1",
+    "env.num_testing_envs=8",
+    "env.obs_norm=false",
+    "env.absorbing=true",
+    "gamma=0.99",
+    "total_epoch=1500000",
+    "interact_per_epoch=1",
+    "update_step_per_epoch=1",
+    "update_discriminator_step_per_epoch=1",
+    "discriminator_train_interval=1",
+    "start_train_step=1000",
+    "test_interval=10000",
+    "test_episodes=10",
+    "train_log_interval=1000",
+    "save_interval=100000",
+    "train_action_deterministic=false",
+    "use_swanlab=true",
+    "use_tensorboard=true",
+    "use_wandb=false",
+    "algorithm.rl.buffer_size=1000000",
+    "algorithm.rl.batch_size=256",
+    "algorithm.rl.hidden_sizes=[256,256]",
+    "algorithm.rl.activation=relu",
+    "algorithm.rl.actor_optimizer=Adam",
+    "algorithm.rl.critic_optimizer=Adam",
+    "algorithm.rl.temp_optimizer=Adam",
+    "algorithm.rl.temp_lr=3e-4",
+    "algorithm.rl.init_temp=0.1",
+    "algorithm.rl.update_log_temp=true",
+    "algorithm.rl.nstep=1",
+    "algorithm.rl.target_update_tau=0.01",
+    "algorithm.rl.critic_loss_coef=1.0",
+    "algorithm.discriminator.discriminator_weight_decay=0.0",
+    "algorithm.discriminator.discriminator_hidden_sizes=[256,256]",
+    "algorithm.discriminator.discriminator_activation=tanh",
+    "algorithm.discriminator.spectral_norm=true",
+    "algorithm.discriminator.discriminator_gradient_penalty=true",
+    "algorithm.discriminator.gradient_penalty_coef=10.0",
+    "algorithm.discriminator.target_gradient_norm=1.0",
+    "algorithm.discriminator.discriminator_train_steps=1",
+    "algorithm.discriminator.discriminator_batch_size=256",
+    "algorithm.discriminator.reward_function=AIRL",
+    "expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/humanoid_wave1_fixed5.hdf5",
+    "expert_dataset.trajectory_num=5",
+    "expert_dataset.subsample_frequency=1",
+    "expert_dataset.random_start=false"
+  ],
+  "base_configs": {
+    "fast_Adam": {
+      "algorithm.rl.actor_lr": 0.0003,
+      "algorithm.rl.critic_lr": 0.0003,
+      "algorithm.rl.learn_temp": "false",
+      "algorithm.rl.target_entropy": -0.5,
+      "algorithm.discriminator.disc_lr": 3e-05,
+      "algorithm.discriminator.discriminator_optimizer": "Adam"
+    },
+    "fast_OAdam": {
+      "algorithm.rl.actor_lr": 0.0003,
+      "algorithm.rl.critic_lr": 0.0003,
+      "algorithm.rl.learn_temp": "false",
+      "algorithm.rl.target_entropy": -0.5,
+      "algorithm.discriminator.disc_lr": 0.0003,
+      "algorithm.discriminator.discriminator_optimizer": "OAdam"
+    },
+    "slow_auto": {
+      "algorithm.rl.actor_lr": 0.0001,
+      "algorithm.rl.critic_lr": 0.0001,
+      "algorithm.rl.learn_temp": "true",
+      "algorithm.rl.target_entropy": -1.0,
+      "algorithm.discriminator.disc_lr": 3e-05,
+      "algorithm.discriminator.discriminator_optimizer": "Adam"
+    },
+    "mid_fixed": {
+      "algorithm.rl.actor_lr": 0.0003,
+      "algorithm.rl.critic_lr": 0.0001,
+      "algorithm.rl.learn_temp": "false",
+      "algorithm.rl.target_entropy": -0.5,
+      "algorithm.discriminator.disc_lr": 0.0001,
+      "algorithm.discriminator.discriminator_optimizer": "OAdam"
+    }
+  },
+  "search_space": {
+    "seed": [
+      1,
+      2
+    ]
+  },
+  "baseline_seed0_run_ids": {
+    "fast_Adam": "0riilxih",
+    "fast_OAdam": "3jjgjnuy",
+    "slow_auto": "v2ykj2u1",
+    "mid_fixed": "oaczyijc"
+  }
+}

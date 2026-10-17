@@ -568,6 +568,15 @@ class ExpertDataset(ReplayBuffer):
         selected_idx = np.random.choice(
             len(all_trajectories), size=trajectory_num, replace=False
         )
+        # Preserve the actual t=0 observation before random-start subsampling.
+        # Raw float32 states, one per selected trajectory; no extra RNG draws.
+        self.initial_states = np.stack([
+            np.asarray(all_trajectories[i][
+                "observations" if "observations" in all_trajectories[i] else "states"
+            ][0], dtype=np.float32)
+            for i in selected_idx
+        ])
+
         # Apply the same offset to every field, retaining real one-step
         # next states and the original terminal/timeout labels. Short episodes
         # still contribute at least one transition.

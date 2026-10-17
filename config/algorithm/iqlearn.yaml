@@ -1,0 +1,30 @@
+name: IQLearn
+defaults:
+  - /algorithm/sac@rl
+  - _self_
+
+# iq.py / train_iq.py: online value term and mixed-batch chi-square regularization.
+iq_loss_type: value
+# Applies to both value and v0: expert / online / mix (50:50).
+v0_mix_type: mix
+div: null
+chi: false
+regularize: true
+alpha: 0.5
+actor_update_interval: 1
+num_actor_updates: 1
+next_v_use_target: true
+online_init_buffersize: 500
+
+rl:
+  nstep: 1
+  # Per source: 256 policy + 256 expert transitions.
+  batch_size: 256
+  actor_lr: 3e-5
+  critic_lr: 3e-4
+  temp_lr: 3e-4
+  init_temp: 0.01
+  learn_temp: false
+  update_log_temp: false
+  initialize: false
+  common_net: false

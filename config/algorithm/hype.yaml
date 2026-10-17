@@ -17,3 +17,4 @@ target_gradient_norm: 0.4
 discriminator_train_steps: 1
 discriminator_batch_size: 4096
 rollout_episodes: 4
+disc_lr_decay: true

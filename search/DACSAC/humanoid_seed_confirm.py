@@ -1,0 +1,77 @@
+"""Confirm four frozen DAC candidates at seeds 1 and 2, four tasks per GPU."""
+import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+import hashlib
+import json
+from pathlib import Path
+from queue import Queue
+import sys
+import threading
+import time
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from parallel_search import SearchSpec, build_command, iter_configs, run_one
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dry-run', action='store_true')
+    args = parser.parse_args()
+    data = json.loads(Path(__file__).with_suffix('.json').read_text())
+    spec = SearchSpec(data['run_script'], data['search_space'],
+                      data['fixed_overrides'], data['sweep_name'])
+    trials = [(name, {**base, **choice})
+              for name, base in data['base_configs'].items()
+              for choice in iter_configs(spec)]
+    destination = ROOT / 'outputs' / spec.sweep_name / datetime.now().strftime('%Y-%m-%d_%H-%M-%S-%f')
+    tasks = []
+    for index, (name, cfg) in enumerate(trials, 1):
+        run_dir = str(destination / f'run_{index:02d}_{name}_seed-{cfg["seed"]}')
+        tasks.append((index, build_command(spec, cfg, run_dir, []), run_dir))
+    print(f'Will run: {len(tasks)}; workers: 8; GPU slots: 0,1,0,1,0,1,0,1', flush=True)
+    print(f'Sweep dir: {destination}', flush=True)
+    if args.dry_run:
+        for index, cmd, _ in tasks:
+            print(f'[{index:02d}] ' + ' '.join(cmd))
+        return
+
+    import torch
+    if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
+        parser.error('Two visible GPUs required; training was not started.')
+    expert = Path(next(x.split('=', 1)[1] for x in spec.fixed_overrides
+                       if x.startswith('expert_dataset.data_path=')))
+    if not expert.is_file():
+        parser.error(f'Expert data missing: {expert}')
+    destination.mkdir(parents=True, exist_ok=False)
+    (destination / 'manifest.json').write_text(json.dumps({
+        'created_at': datetime.now().astimezone().isoformat(), 'spec': data,
+        'trials': [{'base': name, **cfg} for name, cfg in trials],
+        'gpu_slots': [0, 1, 0, 1, 0, 1, 0, 1], 'swanlab_mode': 'offline',
+        'expert_sha256': hashlib.sha256(expert.read_bytes()).hexdigest(),
+        'source_sha256': {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+                          for name in ['algorithm/dac.py', 'algorithm/sac.py', 'utils/networks.py']},
+    }, indent=2) + '\n')
+    gpu_queue = Queue()
+    for gpu in [0, 1, 0, 1, 0, 1, 0, 1]:
+        gpu_queue.put(str(gpu))
+    counter = {'done': 0, 'lock': threading.Lock()}
+    started = time.time()
+    results = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(run_one, index, len(tasks), cmd, run_dir,
+                               gpu_queue, started, counter, 8, 48 * 3600)
+                   for index, cmd, run_dir in tasks]
+        for future in as_completed(futures):
+            index, rc, elapsed = future.result()
+            results.append({'run': index, 'exit_code': rc, 'seconds': elapsed})
+            (destination / 'results.json').write_text(json.dumps(
+                sorted(results, key=lambda r: r['run']), indent=2) + '\n')
+    failed = sum(result['exit_code'] != 0 for result in results)
+    print(f'Finished {len(results)} runs; failures: {failed}; output: {destination}', flush=True)
+    raise SystemExit(1 if failed else 0)
+
+
+if __name__ == '__main__':
+    main()

@@ -11,6 +11,7 @@ from .trpo import TRPO
 from .ppo import PPO
 from .sac import SAC
 from .sqil import SQIL
+from .iqlearn import IQLearn
 from .pwil import PWIL
 from .bc import BehaviorCloning
 from .td3 import TD3
@@ -26,6 +27,7 @@ ALGORITHM_DICT = {
     "PPO": PPO,
     "SAC": SAC,
     "SQIL": SQIL,
+    "IQLearn": IQLearn,
     "PWIL": PWIL,
     "BC": BehaviorCloning,
     "TD3": TD3,

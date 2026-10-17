@@ -13,6 +13,8 @@ env:
   obs_norm: false
   scale: False
   absorbing: false
+  # Record raw episode reset observations in Monitor.
+  collect_init_states: false
 
 test_epsilon: 0
 

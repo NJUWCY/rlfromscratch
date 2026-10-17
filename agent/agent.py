@@ -404,18 +404,23 @@ class SACAgent(ProbabilityA2CAgent):
         else:
             return self.target_critic(states, actions)
 
-    def get_value(self, states:np.ndarray,temperature:torch.Tensor,absorbing:torch.Tensor=None):
+    def get_value(self, states:np.ndarray,temperature:torch.Tensor,absorbing:torch.Tensor=None,use_target=False,action_grad=False):
         """
         states: np.ndarray:(batch, state_dim)
         temperature: tensor:(1,)
         absorbing: tensor:(batch,1) or None, 1 marks DAC absorbing states
         output: (batch,1)
         """
-        # In SAC, get_value is used to get the value of the state-action pair, so we don't need to do gradient update here
+        # action_grad controls actor gradients only; Q gradients remain enabled.
+        # Callers choose the critic explicitly and use no_grad() for TD targets.
+        # Detach temperature at the call site when it should be held fixed.
         assert len(states.shape)<=2
         states = to_correct_device_tensor(states, self.device)
         
         actions, log_probs, u = self.actor.get_action(states, deterministic=False)
+        if not action_grad:
+            actions = actions.detach()
+            log_probs = log_probs.detach()
 
         log_probs = log_probs.unsqueeze(1)
         if absorbing is not None:
@@ -423,7 +428,7 @@ class SACAgent(ProbabilityA2CAgent):
             # zero action and collects no entropy bonus there.
             actions = (1 - absorbing) * actions
             log_probs = (1 - absorbing) * log_probs
-        if self.use_target:
+        if use_target:
             q = self.get_q_function_from_target(states, actions)
         else:
             q = self.get_q_function(states, actions)
