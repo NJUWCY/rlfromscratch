@@ -10,6 +10,7 @@ time_horizon: ${env.max_episode_length}
 observation_only: false
 # Repeat selected expert transitions into replay once, with reward alpha.
 num_transitions_rb: 50000
+prefill_expert: true
 
 rl:
   nstep: 1

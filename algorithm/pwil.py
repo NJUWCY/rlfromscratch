@@ -195,7 +195,7 @@ class PWIL(SAC):
         if self.num_transitions_rb < 0 or self.num_transitions_rb > buffer.buffer_size * buffer.num_envs:
             raise ValueError("PWIL num_transitions_rb must lie within total replay capacity")
         self.prefilled_transitions = 0
-        self._prefilled = False
+        self._prefilled = not pwil_args.prefill_expert
         super().__init__(policy_envs, testing_envs, buffer, agent, logger, device, args, rl_args)
 
     def initialize(self):

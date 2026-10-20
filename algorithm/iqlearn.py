@@ -33,6 +33,13 @@ class IQLearn(SAC):
         self.actor_update_interval = int(cfg.actor_update_interval)
         self.num_actor_updates = int(cfg.num_actor_updates)
         self.next_v_use_target = bool(cfg.next_v_use_target)
+        self.penalty = float(cfg.penalty)
+        self.left = float(cfg.left)
+        self.right = float(cfg.right)
+        if not (math.isfinite(self.left) and math.isfinite(self.right)) or self.left > self.right:
+            raise ValueError("algorithm.left/right must be finite and left <= right")
+        if not math.isfinite(self.penalty) or self.penalty < 0:
+            raise ValueError("algorithm.penalty must be finite and nonnegative")
         if self.iq_loss_type not in {"value", "v0"}:
             raise ValueError("iq_loss_type must be value or v0")
         if self.v0_mix_type not in {"expert", "online", "mix"}:
@@ -132,11 +139,16 @@ class IQLearn(SAC):
         if self.chi or self.divergence == "chi":
             chi_loss = bellman_constraints[expert].square().mean() / (4 * self.iq_alpha)
         if self.regularize:
-            regularize_loss = bellman_constraints.square().mean() / (4 * self.iq_alpha)
+            # Squared distance to [left, right]; no penalty inside the interval.
+            regularize_loss = self.penalty * (
+                torch.relu(self.left - bellman_constraints).square()
+                + torch.relu(bellman_constraints - self.right).square()
+            ).mean()
         loss = softq_loss + value_loss + chi_loss + regularize_loss
         return loss, dict(softq_loss=softq_loss, value_loss=value_loss,
                           chi2_loss=chi_loss, regularize_loss=regularize_loss,
-                          inferred_reward=reward.mean())
+                          expert_reward=reward[expert].mean(),
+                          policy_reward=reward[~expert].mean())
 
     def _update_policy(self):
         # Reference batch_size is PER source: B online + B expert = 2B total.

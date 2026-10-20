@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
+set -eo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+source /home/ubuntu/wangchenyang/anaconda/etc/profile.d/conda.sh
+conda activate rlzero
+set -u
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 
-# Use the same five v5 tasks and expert datasets as scripts/hype.sh.
-# By default train sequentially; env.name=... selects one environment.
-env_names=(Ant-v5 HalfCheetah-v5 Hopper-v5 Walker2d-v5 Humanoid-v5)
+env_names=(Hopper-v5 Ant-v5)
 extra_args=()
 for arg in "$@"; do
     case "$arg" in
@@ -15,67 +16,65 @@ for arg in "$@"; do
 done
 for env_name in "${env_names[@]}"; do
     case "$env_name" in
-        Ant-v5|HalfCheetah-v5|Hopper-v5|Walker2d-v5|Humanoid-v5) ;;
+        Hopper-v5|Ant-v5) ;;
         *) printf 'Unsupported environment: %s\n' "$env_name" >&2; exit 1 ;;
     esac
 done
-
-source /home/ubuntu/wangchenyang/anaconda/etc/profile.d/conda.sh
-conda activate rlzero
-export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
-
 for env_name in "${env_names[@]}"; do
-    loss=value
     case "$env_name" in
-        Hopper-v5|Walker2d-v5) loss=v0 ;;
-        Humanoid-v5) loss=v0 ;;
+        Hopper-v5)
+            # Reference: outputs/Hopper-v5-IQLearn/2026-10-18_06-21-13/.hydra/config.yaml
+            # Zero bounds and penalty=0.5 preserve the original squared regularizer.
+            env_args=(
+                "algorithm.iq_loss_type=v0"
+                "algorithm.left=0"
+                "algorithm.penalty=0.5"
+                "algorithm.right=0"
+                "algorithm.rl.actor_lr=3e-05"
+                "algorithm.rl.init_temp=0.1"
+                "env.name=Hopper-v5"
+                "expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/sac_Hopper-v5_newest_100eps_min_reward_0.hdf5"
+            ) ;;
+        Ant-v5)
+            # Reference: outputs/IQLearn-Ant-v5-search/2026-10-18_15-03-45/init-temp-0.01_actor-lr-0.0001_left-0.1_right-10_penalty-1/.hydra/config.yaml
+            env_args=(
+                "algorithm.iq_loss_type=value"
+                "algorithm.left=-0.1"
+                "algorithm.penalty=1"
+                "algorithm.right=10"
+                "algorithm.rl.actor_lr=0.0001"
+                "algorithm.rl.init_temp=0.01"
+                "env.name=Ant-v5"
+                "expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/sac_Ant-v5_newest_100eps_min_reward_0.hdf5"
+            ) ;;
     esac
-    target_entropy=-1.0
-    if [[ "$env_name" == Humanoid-v5 ]]; then
-        # Per dimension: -1 + log(0.4), consistent with the scaled actor log-prob.
-        target_entropy=-1.916290731874155
-    fi
-    expert_data_path="${PWD}/outputs/collected/SAC-Mujoco/sac_${env_name}_newest_100eps_min_reward_0.hdf5"
-    for arg in "${extra_args[@]}"; do
-        case "$arg" in
-            expert_dataset.data_path=*) expert_data_path="${arg#expert_dataset.data_path=}" ;;
-        esac
-    done
-    if [[ ! -f "$expert_data_path" ]]; then
-        printf 'Expert dataset not found for %s: %s\n' "$env_name" "$expert_data_path" >&2
-        exit 1
-    fi
-    printf '[IQ-Learn] environment=%s expert_data=%s\n' "$env_name" "$expert_data_path"
-
-    # 1M interactions, 64 transitions / 64 updates per epoch, 5 demos subsampled every 5 steps.
     python run_iqlearn.py \
         algorithm=iqlearn \
-        algorithm.iq_loss_type="$loss" \
-        algorithm.rl.learn_temp=false \
-        algorithm.rl.init_temp=0.1 \
-        algorithm.regularize=true \
         env=mujoco \
-        env.name="${env_name}" \
-        env.num_training_envs=1 \
-        env.num_testing_envs=1 \
-        env.obs_norm=false \
-        env.collect_init_states=true \
-        env.absorbing=false \
-        seed=0 \
-        gamma=0.99 \
-        total_epoch=1000000 \
-        interact_per_epoch=1 \
-        update_step_per_epoch=1 \
-        save_interval=100000 \
-        test_interval=10000 \
-        train_log_interval=10000 \
-        train_action_deterministic=false \
-        test_episodes=10 \
-        algorithm.rl.target_entropy="${target_entropy}" \
-        expert_dataset.data_path="${expert_data_path}" \
-        expert_dataset.trajectory_num=5 \
-        expert_dataset.subsample_frequency=1 \
-        use_swanlab=false \
-        use_tensorboard=true \
-        "${extra_args[@]}"
+        "env.num_training_envs=1" \
+        "env.num_testing_envs=1" \
+        "env.obs_norm=false" \
+        "env.absorbing=false" \
+        "env.collect_init_states=true" \
+        "gamma=0.99" \
+        "seed=0" \
+        "use_tensorboard=true" \
+        "use_swanlab=false" \
+        "save_interval=100000" \
+        "test_interval=10000" \
+        "train_log_interval=10000" \
+        "total_epoch=1000000" \
+        "interact_per_epoch=1" \
+        "update_step_per_epoch=1" \
+        "test_episodes=10" \
+        "train_action_deterministic=false" \
+        "start_train_step=5000" \
+        "expert_dataset.trajectory_num=5" \
+        "expert_dataset.subsample_frequency=1" \
+        "algorithm.rl.critic_lr=0.0003" \
+        "algorithm.rl.learn_temp=false" \
+        "algorithm.v0_mix_type=mix" \
+        "algorithm.regularize=true" \
+        "algorithm.alpha=0.5" \
+        "${env_args[@]}" "${extra_args[@]}"
 done

@@ -58,13 +58,13 @@
     "use_swanlab=false",
     "use_tensorboard=true",
     "algorithm.rl.target_entropy=-1.0",
+    "algorithm.prefill_expert=false",
     "expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/sac_HalfCheetah-v5_newest_100eps_min_reward_0.hdf5"
   ],
   "search_space": {
     "algorithm.rl.init_temp": [
       0.01,
-      0.1,
-      0.2
+      0.1
     ],
     "algorithm.alpha": [
       1,
@@ -77,7 +77,6 @@
       10
     ],
     "algorithm.rl.critic_lr": [
-      0.0001,
       0.0003,
       0.0005
     ]

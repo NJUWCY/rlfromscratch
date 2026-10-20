@@ -50,3 +50,51 @@ for env in Ant-v5 HalfCheetah-v5 Hopper-v5 Walker2d-v5; do
         algorithm.discriminator.reward_function=AIRL \
         "$@"
 done
+
+
+python run_dac.py \
+    algorithm=dacsac \
+    env=mujoco \
+    env.name=Humanoid-v5 \
+    env.num_training_envs=1 \
+    env.num_testing_envs=8 \
+    env.obs_norm=false \
+    env.absorbing=true \
+    seed=0 \
+    gamma=0.99 \
+    total_epoch=1500000 \
+    interact_per_epoch=1 \
+    update_step_per_epoch=1 \
+    update_discriminator_step_per_epoch=1 \
+    discriminator_train_interval=1 \
+    start_train_step=1000 \
+    test_interval=10000 \
+    test_episodes=10 \
+    train_log_interval=1000 \
+    save_interval=100000 \
+    train_action_deterministic=false \
+    algorithm.rl.buffer_size=1000000 \
+    algorithm.rl.batch_size=256 \
+    algorithm.rl.actor_lr=3e-4 \
+    algorithm.rl.critic_lr=3e-4 \
+    algorithm.rl.temp_lr=3e-4 \
+    algorithm.rl.hidden_sizes=[256,256] \
+    algorithm.discriminator.disc_lr=3e-4 \
+    algorithm.discriminator.discriminator_hidden_sizes=[256,256] \
+    algorithm.discriminator.discriminator_train_steps=1 \
+    algorithm.discriminator.discriminator_batch_size=256 \
+    algorithm.discriminator.gradient_penalty_coef=10.0 \
+    expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/humanoid_wave1_fixed5.hdf5 \
+    expert_dataset.trajectory_num=5 \
+    expert_dataset.subsample_frequency=1 \
+    algorithm.discriminator.reward_function=AIRL \
+    algorithm.rl.learn_temp=false \
+    algorithm.rl.init_temp=0.1 \
+    algorithm.rl.target_entropy=-0.5 \
+    algorithm.rl.actor_optimizer=Adam \
+    algorithm.rl.critic_optimizer=Adam \
+    algorithm.rl.temp_optimizer=Adam \
+    algorithm.discriminator.discriminator_optimizer=OAdam \
+    expert_dataset.random_start=false \
+    use_tensorboard=true \
+    "$@"

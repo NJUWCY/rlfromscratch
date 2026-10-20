@@ -15,6 +15,9 @@ actor_update_interval: 1
 num_actor_updates: 1
 next_v_use_target: true
 online_init_buffersize: 500
+left: 0
+right: 0
+penalty: 0.5
 
 rl:
   nstep: 1
