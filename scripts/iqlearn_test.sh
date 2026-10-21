@@ -49,6 +49,7 @@ for env_name in "${env_names[@]}"; do
 
     # 1M interactions, 64 transitions / 64 updates per epoch, 5 demos subsampled every 5 steps.
     python run_iqlearn.py \
+        random_steps='${start_train_step}' \
         algorithm=iqlearn \
         algorithm.iq_loss_type="$loss" \
         algorithm.rl.learn_temp=false \

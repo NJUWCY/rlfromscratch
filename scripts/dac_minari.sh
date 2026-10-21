@@ -15,6 +15,7 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 for env in Humanoid-v5; do
     dataset_env="${env%-v5}"
     python run_dac.py \
+        random_steps='${start_train_step}' \
         algorithm=dacsac \
         env=mujoco \
         env.name=${env} \

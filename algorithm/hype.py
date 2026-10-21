@@ -62,7 +62,7 @@ class HyPE(DAC):
 
     def random_choose_action(self):
         if self.reset_policy_timesteps:
-            return self._policy_phase_step() < self.start_train_step
+            return self._policy_phase_step() < self.random_steps
         return super().random_choose_action()
 
     def start_train(self):

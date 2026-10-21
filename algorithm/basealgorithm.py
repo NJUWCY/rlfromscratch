@@ -35,6 +35,9 @@ class BaseAlgorithm(ABC):
         self.seed = args.seed 
 
 
+        self.random_steps = int(args.random_steps)
+        if self.random_steps < 0:
+            raise ValueError("random_steps must be nonnegative")
         self.interaction_step = 0
         self.gradient_step = 0
 
@@ -71,8 +74,8 @@ class BaseAlgorithm(ABC):
         
 
     def random_choose_action(self):
-        """You can use this function to implement epsilon-greedy exploration strategy"""
-        return False
+        """Use random-action warmup for off-policy data collection."""
+        return not self.onpolicy and self.interaction_step < self.random_steps
 
     def interact_with_envs(self):
         """

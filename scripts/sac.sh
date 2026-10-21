@@ -1,4 +1,5 @@
 python run_sac.py \
+    random_steps='${start_train_step}' \
   algorithm=sac \
   train_action_deterministic=false \
   env=mujoco \

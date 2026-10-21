@@ -12,7 +12,7 @@ export PYTHONDONTWRITEBYTECODE=1
 # 162 combinations per environment; 2 GPUs with 4 workers each.
 # left/right vary independently. Seed 0, 1M interactions per run.
 # Example: ENVS=humanoid bash search/IQLearn/iqlearn_param_search.sh
-read -r -a env_names <<< "${ENVS:-ant halfcheetah walker2d humanoid}"
+read -r -a env_names <<< "${ENVS:-halfcheetah walker2d humanoid}"
 for env_name in "${env_names[@]}"; do
     case "$env_name" in
         ant|halfcheetah|walker2d|humanoid) ;;

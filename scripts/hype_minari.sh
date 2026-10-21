@@ -67,6 +67,7 @@ for env_name in "${env_names[@]}"; do
     printf '[HyPE] environment=%s expert_data=%s\n' "$env_name" "$expert_data_path"
 
     python run_hype.py \
+        random_steps='${start_train_step}' \
         algorithm=hypesac \
         env=mujoco \
         env.name="${env_name}" \

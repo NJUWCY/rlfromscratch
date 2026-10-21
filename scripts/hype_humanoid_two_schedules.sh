@@ -22,6 +22,7 @@ mkdir -p "$run_root/A_fast_OAdam" "$run_root/A_fast_Adam" "$run_root/A_mid_fixed
 
 # 1. Schedule A: fast_OAdam
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0003 \
     algorithm.discriminator.disc_lr=0.0003 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -49,6 +50,7 @@ p1=$!
 
 # 2. Schedule A: fast_Adam
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0003 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -76,6 +78,7 @@ p2=$!
 
 # 3. Schedule A: mid_fixed
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -103,6 +106,7 @@ p3=$!
 
 # 4. Schedule A: slow_fixed
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \
@@ -130,6 +134,7 @@ p4=$!
 
 # 5. Schedule B: fast_OAdam
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0003 \
     algorithm.discriminator.disc_lr=0.0003 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -157,6 +162,7 @@ p5=$!
 
 # 6. Schedule B: fast_Adam
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0003 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -184,6 +190,7 @@ p6=$!
 
 # 7. Schedule B: mid_fixed
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -211,6 +218,7 @@ p7=$!
 
 # 8. Schedule B: slow_fixed
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \

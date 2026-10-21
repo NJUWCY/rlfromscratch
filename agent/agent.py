@@ -416,11 +416,12 @@ class SACAgent(ProbabilityA2CAgent):
         # Detach temperature at the call site when it should be held fixed.
         assert len(states.shape)<=2
         states = to_correct_device_tensor(states, self.device)
-        
-        actions, log_probs, u = self.actor.get_action(states, deterministic=False)
         if not action_grad:
-            actions = actions.detach()
-            log_probs = log_probs.detach()
+            with torch.no_grad():
+                actions, log_probs, u = self.actor.get_action(states, deterministic=False)
+        else:
+            actions, log_probs, u = self.actor.get_action(states, deterministic=False)
+        
 
         log_probs = log_probs.unsqueeze(1)
         if absorbing is not None:

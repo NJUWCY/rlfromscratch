@@ -13,6 +13,7 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 # One environment, one gradient step per environment step, as in the DAC paper.
 for env in Ant-v5 HalfCheetah-v5 Hopper-v5 Walker2d-v5; do
     python run_dac.py \
+        random_steps='${start_train_step}' \
         algorithm=dacsac \
         env=mujoco \
         env.name=${env} \
@@ -53,6 +54,7 @@ done
 
 
 python run_dac.py \
+    random_steps='${start_train_step}' \
     algorithm=dacsac \
     env=mujoco \
     env.name=Humanoid-v5 \
@@ -84,7 +86,7 @@ python run_dac.py \
     algorithm.discriminator.discriminator_train_steps=1 \
     algorithm.discriminator.discriminator_batch_size=256 \
     algorithm.discriminator.gradient_penalty_coef=10.0 \
-    expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/humanoid_wave1_fixed5.hdf5 \
+    expert_dataset.data_path=/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/sac_Humanoid-v5_newest_100eps_min_reward_0.hdf5 \
     expert_dataset.trajectory_num=5 \
     expert_dataset.subsample_frequency=1 \
     algorithm.discriminator.reward_function=AIRL \

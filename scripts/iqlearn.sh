@@ -49,6 +49,7 @@ for env_name in "${env_names[@]}"; do
             ) ;;
     esac
     python run_iqlearn.py \
+        random_steps='${start_train_step}' \
         algorithm=iqlearn \
         env=mujoco \
         "env.num_training_envs=1" \

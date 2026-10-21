@@ -145,7 +145,7 @@ class DQN(OffPolicyAlgorithm):
         else:
             self.epsilon = self.start_epsilon
         
-        return np.random.rand() < self.epsilon
+        return super().random_choose_action() or np.random.rand() < self.epsilon
 
     def interact_with_envs(self):
         batch, result = super().interact_with_envs()

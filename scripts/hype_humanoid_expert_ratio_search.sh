@@ -25,6 +25,7 @@ pids=()
 # 01_ratio0p01_100k_mid_fixed
 mkdir -p "$run_root/01_ratio0p01_100k_mid_fixed"
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -53,6 +54,7 @@ pids+=("$!")
 # 01_ratio0p01_100k_slow_fixed
 mkdir -p "$run_root/01_ratio0p01_100k_slow_fixed"
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \
@@ -81,6 +83,7 @@ pids+=("$!")
 # 02_ratio0p01_500k_mid_fixed
 mkdir -p "$run_root/02_ratio0p01_500k_mid_fixed"
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -109,6 +112,7 @@ pids+=("$!")
 # 02_ratio0p01_500k_slow_fixed
 mkdir -p "$run_root/02_ratio0p01_500k_slow_fixed"
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \
@@ -137,6 +141,7 @@ pids+=("$!")
 # 03_ratio0p025_100k_mid_fixed
 mkdir -p "$run_root/03_ratio0p025_100k_mid_fixed"
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -165,6 +170,7 @@ pids+=("$!")
 # 03_ratio0p025_100k_slow_fixed
 mkdir -p "$run_root/03_ratio0p025_100k_slow_fixed"
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \
@@ -193,6 +199,7 @@ pids+=("$!")
 # 04_ratio0p025_500k_mid_fixed
 mkdir -p "$run_root/04_ratio0p025_500k_mid_fixed"
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -221,6 +228,7 @@ pids+=("$!")
 # 04_ratio0p025_500k_slow_fixed
 mkdir -p "$run_root/04_ratio0p025_500k_slow_fixed"
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \
@@ -256,6 +264,7 @@ pids=()
 # 05_ratio0p1_100k_mid_fixed
 mkdir -p "$run_root/05_ratio0p1_100k_mid_fixed"
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -284,6 +293,7 @@ pids+=("$!")
 # 05_ratio0p1_100k_slow_fixed
 mkdir -p "$run_root/05_ratio0p1_100k_slow_fixed"
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \
@@ -312,6 +322,7 @@ pids+=("$!")
 # 06_ratio0p1_500k_mid_fixed
 mkdir -p "$run_root/06_ratio0p1_500k_mid_fixed"
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -340,6 +351,7 @@ pids+=("$!")
 # 06_ratio0p1_500k_slow_fixed
 mkdir -p "$run_root/06_ratio0p1_500k_slow_fixed"
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \
@@ -368,6 +380,7 @@ pids+=("$!")
 # 07_ratio0p2_100k_mid_fixed
 mkdir -p "$run_root/07_ratio0p2_100k_mid_fixed"
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -396,6 +409,7 @@ pids+=("$!")
 # 07_ratio0p2_100k_slow_fixed
 mkdir -p "$run_root/07_ratio0p2_100k_slow_fixed"
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \
@@ -424,6 +438,7 @@ pids+=("$!")
 # 08_ratio0p2_500k_mid_fixed
 mkdir -p "$run_root/08_ratio0p2_500k_mid_fixed"
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -452,6 +467,7 @@ pids+=("$!")
 # 08_ratio0p2_500k_slow_fixed
 mkdir -p "$run_root/08_ratio0p2_500k_slow_fixed"
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \
@@ -487,6 +503,7 @@ pids=()
 # 09_ratio0p5_100k_mid_fixed
 mkdir -p "$run_root/09_ratio0p5_100k_mid_fixed"
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -515,6 +532,7 @@ pids+=("$!")
 # 09_ratio0p5_100k_slow_fixed
 mkdir -p "$run_root/09_ratio0p5_100k_slow_fixed"
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \
@@ -543,6 +561,7 @@ pids+=("$!")
 # 10_ratio0p5_500k_mid_fixed
 mkdir -p "$run_root/10_ratio0p5_500k_mid_fixed"
 CUDA_VISIBLE_DEVICES=0 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0003 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=0.0001 algorithm.discriminator.discriminator_optimizer=OAdam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-0.5 \
@@ -571,6 +590,7 @@ pids+=("$!")
 # 10_ratio0p5_500k_slow_fixed
 mkdir -p "$run_root/10_ratio0p5_500k_slow_fixed"
 CUDA_VISIBLE_DEVICES=1 python run_hype.py \
+    random_steps='${start_train_step}' \
     algorithm.rl.actor_lr=0.0001 algorithm.rl.critic_lr=0.0001 \
     algorithm.discriminator.disc_lr=3e-05 algorithm.discriminator.discriminator_optimizer=Adam \
     algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 algorithm.rl.target_entropy=-1.0 \

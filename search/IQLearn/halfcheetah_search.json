@@ -13,7 +13,6 @@
     "algorithm.next_v_use_target=true",
     "algorithm.online_init_buffersize=500",
     "algorithm.rl.learn_temp=false",
-    "algorithm.rl.critic_lr=3e-4",
     "algorithm.rl.temp_lr=3e-4",
     "algorithm.rl.buffer_name=ReplayBuffer",
     "algorithm.rl.buffer_size=1000000",
@@ -70,28 +69,30 @@
   ],
   "search_space": {
     "algorithm.rl.init_temp": [
+      0.001,
       0.01,
-      0.1,
-      1
+      0.1
     ],
     "algorithm.rl.actor_lr": [
+      0.0003
+    ],
+    "algorithm.rl.critic_lr":[
       0.0001,
       0.0003
     ],
     "algorithm.left": [
       -0.1,
-      -1,
-      -10
+      -0.5,
+      -1
     ],
     "algorithm.right": [
       0.1,
-      1,
-      10
+      0.5,
+      1
     ],
     "algorithm.penalty": [
       0.1,
-      1,
-      5
+      0.5
     ]
   }
 }

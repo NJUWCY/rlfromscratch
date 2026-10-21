@@ -333,9 +333,17 @@ class TanhGaussianActor(Actor):
                  initialize=False,
                  initial_log_sigma:float=0.0,
                  last_std:float=0.01,
-                 common_net:bool=False):
+                 common_net:bool=False,
+                 log_std_bounds=None):
         super(TanhGaussianActor, self).__init__(observation_space, action_space)
 
+        # Optional smooth log-std bounds used by Deep PPIL; default retains clamp.
+        self.log_std_bounds = None if log_std_bounds is None else tuple(float(v) for v in log_std_bounds)
+        if self.log_std_bounds is not None:
+            if (len(self.log_std_bounds) != 2 or
+                    not all(math.isfinite(v) for v in self.log_std_bounds) or
+                    self.log_std_bounds[0] >= self.log_std_bounds[1]):
+                raise ValueError("log_std_bounds requires two finite increasing bounds")
         self.common_net = bool(common_net)
         if self.common_net:
             # Share every hidden layer; keep separate linear mean/std heads.
@@ -377,7 +385,11 @@ class TanhGaussianActor(Actor):
             log_sigma = self.log_sigma(x)
         else:
             log_sigma = self.log_sigma
-        if self.clip_sigma:
+        bounds = getattr(self, "log_std_bounds", None)
+        if bounds is not None:
+            lower, upper = bounds
+            log_sigma = lower + 0.5 * (upper - lower) * (torch.tanh(log_sigma) + 1)
+        elif self.clip_sigma:
             log_sigma = log_sigma.clamp(min=MIN_LOGSTD, max=MAX_LOGSTD)
         sigma = torch.exp(log_sigma)
         if not self.state_dependent_std:

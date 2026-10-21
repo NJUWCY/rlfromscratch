@@ -52,9 +52,6 @@ class SAC(OffPolicyAlgorithm):
     def _update_buffer(self, batch):
         self.buffer.add(batch)
     
-    def random_choose_action(self):
-        return self.interaction_step<self.start_train_step
-
 
     def _update_policy(self):
         return self._sac_update(self.buffer.sample(self.batch_size))

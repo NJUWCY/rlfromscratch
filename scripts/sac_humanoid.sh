@@ -21,6 +21,7 @@ for seed in "${seeds[@]}"; do
 
     echo "Running ${experiment_name}  init_temp=${init_temp}"
     OMP_NUM_THREADS=1 python run_sac.py \
+        random_steps='${start_train_step}' \
       algorithm=sac \
       train_action_deterministic=false \
       env=mujoco \

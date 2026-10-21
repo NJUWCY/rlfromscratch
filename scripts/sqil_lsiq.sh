@@ -18,6 +18,7 @@ for env_name in "${env_names[@]}"; do
     expert_data_path="/home/ubuntu/wangchenyang/rlzero/rlfromscratch/outputs/collected/SAC-Mujoco/sac_${env_name}_newest_100eps_min_reward_0.hdf5"
 
     python run_sqil.py \
+        random_steps='${start_train_step}' \
         algorithm=sqil \
         env=mujoco \
         env.name="${env_name}" \

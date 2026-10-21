@@ -7,6 +7,7 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 
 for seed in 1 2; do
     python run_pwil.py \
+        random_steps='${start_train_step}' \
             algorithm=pwil env=mujoco env.name=Ant-v5 \
             env.num_training_envs=1 env.num_testing_envs=1 \
             env.obs_norm=false env.absorbing=false \

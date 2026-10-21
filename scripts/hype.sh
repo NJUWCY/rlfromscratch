@@ -28,6 +28,7 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 # Intervals use epochs: ceil(10000/64)=157; ceil(5000/64)=79 for Hopper.
 # Target entropy is per dimension, expressed in environment action units.
 for env_name in "${env_names[@]}"; do
+    [[ "$env_name" == Humanoid-v5 ]] && continue  # Dedicated command below.
     target_entropy=-1.0
     discriminator_interval=157
     sampling_schedule='[[0.2,0.1,200000],[0.1,0.01,1000000]]'
@@ -38,10 +39,6 @@ for env_name in "${env_names[@]}"; do
             ;;
         Hopper-v5)
             discriminator_interval=79
-            ;;
-        Humanoid-v5)
-            # -1 + log(0.4), because Humanoid actions are in [-0.4, 0.4].
-            target_entropy=-1.916290731874155
             ;;
         HalfCheetah-v5)
             # Best round1 configuration across seeds 0, 1, 2.
@@ -66,6 +63,7 @@ for env_name in "${env_names[@]}"; do
     printf '[HyPE] environment=%s expert_data=%s\n' "$env_name" "$expert_data_path"
 
     python run_hype.py \
+        random_steps='${start_train_step}' \
         algorithm=hypesac \
         env=mujoco \
         env.name="${env_name}" \
@@ -96,3 +94,31 @@ for env_name in "${env_names[@]}"; do
         "${env_overrides[@]}" \
         "${extra_args[@]}"
 done
+
+# Humanoid-v5: 07_ratio0p2_100k_mid_fixed (w45n1f2f).
+if [[ " ${env_names[*]} " == *" Humanoid-v5 "* ]]; then
+    python run_hype.py \
+        random_steps='${start_train_step}' \
+        algorithm=hypesac env=mujoco env.name=Humanoid-v5 \
+        env.num_training_envs=1 env.absorbing=true \
+        total_epoch=23438 interact_per_epoch=64 update_step_per_epoch=64 \
+        discriminator_train_interval=157 start_train_step=1000 \
+        train_action_deterministic=false test_interval=157 \
+        train_log_interval=16 save_interval=1563 \
+        algorithm.rl.actor_lr=3e-4 algorithm.rl.critic_lr=1e-4 \
+        algorithm.rl.actor_optimizer=Adam algorithm.rl.critic_optimizer=Adam \
+        algorithm.rl.learn_temp=false algorithm.rl.init_temp=0.1 \
+        algorithm.rl.temp_lr=3e-4 algorithm.rl.target_entropy=-0.5 \
+        algorithm.rl.target_update_tau=0.01 algorithm.policy_lr_decay=false \
+        'algorithm.sampling_schedule=[[0.2,0,100000],[0,0,1500032]]' \
+        algorithm.discriminator.disc_lr=1e-4 \
+        algorithm.discriminator.discriminator_activation=tanh \
+        algorithm.discriminator.discriminator_output_gain=0.01 \
+        algorithm.discriminator.spectral_norm=true \
+        algorithm.discriminator.target_gradient_norm=1.0 \
+        algorithm.discriminator.disc_lr_decay=false \
+        expert_dataset.data_path=outputs/collected/SAC-Mujoco/sac_Humanoid-v5_newest_100eps_min_reward_0.hdf5 \
+        expert_dataset.trajectory_num=5 expert_dataset.subsample_frequency=1 \
+        expert_dataset.random_start=false use_tensorboard=true \
+        "${extra_args[@]}"
+fi

@@ -44,6 +44,7 @@ for env_name in "${env_names[@]}"; do
 
     # 1M interactions, 64 transitions / 64 updates per epoch, 5 complete demos.
     python run_sqil.py \
+        random_steps='${start_train_step}' \
         algorithm=sqil \
         env=mujoco \
         env.name="${env_name}" \

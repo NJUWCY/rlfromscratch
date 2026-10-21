@@ -36,6 +36,8 @@ discriminator_train_interval: 1
 test_episodes: 10
 train_action_deterministic: true
 start_train_step: 5000
+# Number of initial transitions collected with random actions.
+random_steps: 0
 
 
 

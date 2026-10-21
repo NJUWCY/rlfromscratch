@@ -18,6 +18,7 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 # these have no run_dac.py configuration switch and are not enabled by this script.
 for env in Humanoid-v5; do
     python run_dac.py \
+        random_steps='${start_train_step}' \
         algorithm=dacsac \
         env=mujoco \
         env.name=${env} \

@@ -1,4 +1,5 @@
 python run_td3.py \
+    random_steps='${start_train_step}' \
   algorithm=td3 \
   train_action_deterministic=false \
   env=mujoco \

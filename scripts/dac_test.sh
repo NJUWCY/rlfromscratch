@@ -13,6 +13,7 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 # One environment, one gradient step per environment step, as in the DAC paper.
 for env in Humanoid-v5; do
     python run_dac.py \
+        random_steps='${start_train_step}' \
         algorithm=dacsac \
         env=mujoco \
         env.name=${env} \

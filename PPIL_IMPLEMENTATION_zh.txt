@@ -1,0 +1,91 @@
+Deep PPIL 实现说明
+
+位置：algorithm/ppil.py、config/algorithm/ppil.yaml、run_ppil.py、scripts/ppil.sh
+论文：Viano 等，Proximal Point Imitation Learning，NeurIPS 2022；
+重点参考附录 J 的 softmax 对偶梯度与 L.7 的连续控制实现。
+代码依据：outputs/P2IL/deep_PPIL/iq.py、train.py、agent/sac.py 和 README.md。
+
+一、训练流程
+1. 策略与环境交互，将 transition 存入现有 ReplayBuffer。任务奖励仅用于评估，
+   不进入 PPIL 优化目标。默认 warmup=1280 步；random_steps=0，因此 warmup
+   也由随机策略采样动作，而不是环境均匀随机动作。
+2. 每次外层更新，在线 buffer 和 expert buffer 各采样 batch_size=256 条数据。
+   这个混合 batch 在整个内循环中保持不变。
+3. 内循环 inner_steps=20 次：重新计算 reward、Q、V、V' 和 softmax 权重，
+   同时对 reward/Q 做一次 Adam 更新；策略参数在内循环中不更新。
+4. 内循环完成后，在混合 batch 的状态上做一次标准 SAC actor 更新，
+   可选自动温度更新。默认 learn_temp=false。
+5. 每次外层更新使 gradient_step 加一；ppil/critic_updates 记录实际内层更新数。
+   因此默认每次交互约对应 20 次 reward/Q 更新、1 次策略更新，不能把它与
+   普通 SAC 的一次 critic 更新视为相同计算量。
+
+二、损失（使用 reward 最大化约定）
+y = gamma * (1-done) * V(next_state)
+delta = reward + y - Q
+w = softmax(tau * delta[weight_source]).detach()
+
+reward_loss   = -mean(reward[expert]) + sum(w * reward[weight_source])
+logistic_loss = sum(w * (y-Q)[weight_source])
+value_loss    = mean((V-y)[expert])                     # 默认 value_expert
+regularize    = mean(reward^2 + Q^2) / (4*alpha)          # 默认开启
+total_loss    = reward_loss + logistic_loss + value_loss + regularize
+
+weight_source=expert 是 MuJoCo 参考实现的默认配置。该名字只描述 softmax 的
+样本来源；训练依然收集在线数据，并用专家/在线状态共同训练 actor。
+weight_source=online 对应参考代码 agent.online=true。
+tau 是 Bellman 残差 softmax 的系数；与 SAC temperature 和 target_update_tau
+是不同参数。alpha 是正则强度分母，也不是 SAC temperature。
+chi=true 时额外加入 expert reward 的平方正则。
+value 模式对整个混合 batch 计算 mean(V-y)。
+v0 模式依照参考代码使用 (1-gamma)*mean(V[expert])：
+这里采样的是普通专家状态，是初始状态分布的代理，并非真实 s0；
+不要将其误认为本库 IQ-Learn 的真实初始状态采样实现。
+
+该 detached-softmax surrogate 与以下 log-mean-exp 目标具有相同的一阶梯度：
+-mean(reward[expert]) + log(mean(exp(tau*delta[source])))/tau
++ value_loss + regularize。
+数值日志 ppil/objective 使用稳定 logsumexp 记录这个目标；critic/q_loss
+记录参考代码使用的 surrogate，两者标量值不必相同。
+
+三、网络与梯度
+复用 SACAgent、QFunction/DoubleQFunction、TanhGaussianActor。
+独立 reward 网络为单输出 QFunction，不是分类判别器，没有 sigmoid。
+默认单 Q、两层 256 ReLU，所有 Linear 使用 gain=1 的正交初始化。
+actor 共享 MLP 隐藏层，均值/标准差分别使用线性输出头。
+新增可选 log_std_bounds=[-5,2]：用 tanh 平滑映射 log_std，匹配参考方法。
+不指定该参数时，原有策略继续使用原 clamp 逻辑。
+动作和 log_prob 使用当前库的环境动作坐标；Humanoid 为 ±0.4。
+
+默认 use_target=false：V(next_state) 通过当前 critic 计算，保留对 critic
+的梯度，不能 detach bootstrap。策略样本/概率在价值损失中 detach；
+参考实现也不在内循环更新 actor，这保留了相同的 critic/reward 梯度。
+use_target=true 时 V(next_state) 在 no_grad 下使用 target critic。
+reward 作为 agent.reward 子模块保存，已有 agent.save/load 能保存/恢复它；
+加载时须按 run_ppil.py 创建同样的 actor、critic 和 reward 模块。
+沿用库的推理 checkpoint 约定，不保存优化器/replay，不是完整断点续训。
+
+四、运行配置与边界
+bash scripts/ppil.sh 默认依次运行五个 MuJoCo-v5 环境；
+可用 env.name=Ant-v5 选择一个环境，其他 Hydra 参数仍可从命令行覆盖。
+数据沿用 outputs/collected/SAC-Mujoco 的五条专家轨迹。
+Ant：参考 README，tau=1、init_temp=0.01、actor_lr=3e-5。
+HalfCheetah：参考 README，tau=0.08、init_temp=0.01、actor_lr=3e-5。
+Hopper：结合论文 L.7，actor_lr=2e-4、init_temp=0.01、Adam beta1=0。
+Walker2d：结合论文 L.7，actor_lr=1e-4、init_temp=0.001。
+Humanoid 是库内扩展环境，不是论文报告的实验；使用通用 Deep PPIL 参数。
+
+论文 L.7 与仓库 README 的部分温度/tau 参数不同，这里明确以 README 的
+Ant/HalfCheetah 可执行配置为准。环境 v5、现有数据、专家数量、总交互预算、
+初始化随机数顺序以及本库评估流程均不保证与原 v2 实验完全一致。
+实现的是 Deep PPIL 连续控制版本，不包括线性 MDP 或离线训练入口。
+默认使用 MuJoCo 参考代码实际选中的 SingleQCritic 等价结构。
+可选 double_critic 使用 min(Q1,Q2) 一次性构造损失；不照搬参考双 Q 路径中
+重复 20 次内循环、在优化器更新后复用旧计算图的行为。
+
+五、验证
+tests/test_ppil.py 比较参考函数与新函数的 loss 和所有相关梯度，覆盖
+expert/online 权重、三种 value loss、启用/禁用 target。
+另检查 log-mean-exp 梯度等价、大残差数值稳定性、20:1 优化器更新次数、
+任务奖励不影响学习、reward 网络 checkpoint 保存/加载。
+outputs/PPIL-smoke-20261020/ 下保存 Ant 和 HalfCheetah 的短流程调试日志。
+短流程仅验证运行链路，不代表已验证最终性能或复现论文分数。

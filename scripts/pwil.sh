@@ -14,6 +14,7 @@ for env_name in "${env_names[@]}"; do
     target_entropy=-1.0
     if [[ "$env_name" == Humanoid-v5 ]]; then target_entropy=-1.916290731874155; fi
     python run_pwil.py \
+        random_steps='${start_train_step}' \
         algorithm=pwil env=mujoco env.name="${env_name}" \
         env.num_training_envs=1 env.num_testing_envs=1 \
         env.obs_norm=false env.absorbing=false \
@@ -31,6 +32,7 @@ for env_name in "${env_names[@]}"; do
 done
 
 python run_pwil.py \
+    random_steps='${start_train_step}' \
         algorithm=pwil env=mujoco env.name=Ant-v5 \
         env.num_training_envs=1 env.num_testing_envs=1 \
         env.obs_norm=false env.absorbing=false \
@@ -48,6 +50,7 @@ python run_pwil.py \
         "$@"
 
 python run_pwil.py \
+    random_steps='${start_train_step}' \
         algorithm=pwil env=mujoco env.name=HalfCheetah-v5 \
         env.num_training_envs=1 env.num_testing_envs=1 \
         env.obs_norm=false env.absorbing=false \
